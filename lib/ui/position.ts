@@ -54,7 +54,6 @@ export function cornerPosition(
   corner: ButtonCorner,
   direction: 'ltr' | 'rtl',
   size: number,
-  scroll: Point = { top: 0, left: 0 },
 ): Point {
   const endIsRight = direction === 'ltr';
   const inset = EDGE_INSET;
@@ -64,10 +63,10 @@ export function cornerPosition(
   const bottom = field.top + field.height - inset - size;
   const top = field.top + inset;
 
-  const at = (t: number, l: number): Point => ({
-    top: t + scroll.top,
-    left: l + scroll.left,
-  });
+  // Viewport coordinates. The layer is fixed and lives in the top layer, so
+  // it can stay interactive while a modal <dialog> renders the rest of the
+  // document inert — the one placement the spec calls out explicitly.
+  const at = (t: number, l: number): Point => ({ top: t, left: l });
 
   switch (corner) {
     case 'bottom-end':
@@ -164,19 +163,16 @@ export function placeButton(
     width: box.width,
     height: box.height,
   };
-  const scroll = { top: globalThis.scrollY, left: globalThis.scrollX };
 
   const ladder = preferred
     ? [preferred, ...CORNER_LADDER.filter((c) => c !== preferred)]
     : CORNER_LADDER;
 
   for (const corner of ladder) {
-    const point = cornerPosition(rect, corner, direction, size, scroll);
-    const viewportPoint = {
-      top: point.top - scroll.top,
-      left: point.left - scroll.left,
-    };
-    if (!isCornerOccupied(viewportPoint, HIT_ZONE, ignore)) {
+    const point = cornerPosition(rect, corner, direction, size);
+    // getBoundingClientRect and elementsFromPoint are both viewport-relative,
+    // so no scroll conversion is needed on either side.
+    if (!isCornerOccupied(point, HIT_ZONE, ignore)) {
       return { corner, point, forced: false };
     }
   }
@@ -186,7 +182,7 @@ export function placeButton(
   const corner: ButtonCorner = 'outside-below';
   return {
     corner,
-    point: cornerPosition(rect, corner, direction, size, scroll),
+    point: cornerPosition(rect, corner, direction, size),
     forced: true,
   };
 }

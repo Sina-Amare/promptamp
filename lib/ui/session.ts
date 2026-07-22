@@ -112,6 +112,9 @@ export function createSession(
         if (!panel) return;
         void computePosition(deps.field, panel.element, {
           placement: 'top',
+          // Fixed, to match the top-layer button layer this sits inside —
+          // every coordinate in the injected UI is viewport-relative.
+          strategy: 'fixed',
           middleware: [offset(10), flip(), shift({ padding: 8 })],
         }).then(({ x, y }) => {
           if (!panel) return;
@@ -230,9 +233,11 @@ export function createSession(
       children: [el('span', { text: 'Draft replaced' }), undo, announce],
     });
 
+    // Viewport coordinates: getBoundingClientRect already returns them, and
+    // the layer this sits in is fixed.
     const box = deps.field.getBoundingClientRect();
-    pill.style.transform = `translate3d(${String(box.left + globalThis.scrollX)}px, ${String(
-      box.bottom + globalThis.scrollY + 8,
+    pill.style.transform = `translate3d(${String(box.left)}px, ${String(
+      box.bottom + 8,
     )}px, 0)`;
 
     deps.layer.append(pill);

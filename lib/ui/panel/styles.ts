@@ -16,6 +16,10 @@ export const PANEL_CSS = `
 .pa-panel {
   position: absolute;
   z-index: var(--ph-z);
+  /* The layer this sits in is pointer-events:none so the page stays clickable
+     around the button. Without re-enabling them here the whole panel is
+     click-through: visible, and every control dead. */
+  pointer-events: auto;
   inline-size: min(560px, calc(100vw - 32px));
   min-inline-size: 320px;
   max-block-size: 50vh;
@@ -364,6 +368,9 @@ export const PANEL_CSS = `
 .pa-undo {
   position: absolute;
   z-index: var(--ph-z);
+  /* Same reason as the panel — an Undo button nobody can press is worse than
+     no Undo button at all. */
+  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: var(--ph-space-2);

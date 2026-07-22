@@ -27,7 +27,7 @@ export default defineContentScript({
     // Suppression is resolved *before* anything is added to the DOM. A hidden
     // site must be hidden with certainty, not hidden-then-removed: a broken
     // off switch is the fastest way to lose a user's trust.
-    const suppression = await loadSuppression();
+    const suppression = await resolveSuppression();
     if (suppression.suppressed) return;
 
     let sessionHidden = false;
@@ -48,6 +48,55 @@ export default defineContentScript({
 
     const layer = el('div', { class: 'pa-button-layer' });
     host.root.append(layer);
+
+    const supportsPopover = 'popover' in layer;
+    if (supportsPopover) layer.setAttribute('popover', 'manual');
+
+    /**
+     * Promote the layer into the browser top layer.
+     *
+     * Order within the top layer is promotion order, so a modal <dialog>
+     * opened *after* us stacks above us — the button renders but every click
+     * is intercepted, and the dialog makes the rest of the document inert
+     * besides. Re-promoting on each attach puts us back on top, which is
+     * exactly what UX-SPEC §4 prescribes for this case.
+     */
+    function promoteLayer(): void {
+      if (!supportsPopover) return;
+      const popover = layer as HTMLElement & {
+        showPopover: () => void;
+        hidePopover: () => void;
+      };
+      try {
+        if (layer.matches(':popover-open')) popover.hidePopover();
+        popover.showPopover();
+      } catch {
+        // Unsupported or mid-transition; the z-index fallback still applies.
+      }
+    }
+
+    /**
+     * A modal `<dialog>` makes every subtree except its own inert, and being in
+     * the top layer does not exempt us — the button renders and every click is
+     * swallowed. Re-parenting the host inside the dialog is the only way to
+     * land in the one non-inert subtree.
+     *
+     * This adds our own node next to the dialog's content; it never touches
+     * the field or anything the page authored, so principle 5 still holds.
+     */
+    function reparentForModal(field: Element): void {
+      const dialog = field.closest('dialog');
+      const target =
+        dialog && dialog.hasAttribute('open') && dialog.matches(':modal')
+          ? dialog
+          : document.body;
+      if (host.element.parentElement !== target) {
+        target.append(host.element);
+        promoteLayer();
+      }
+    }
+
+    promoteLayer();
 
     let button: ButtonHandle | null = null;
     let session: EnhanceSession | null = null;
@@ -91,6 +140,8 @@ export default defineContentScript({
     const tracker = createFieldTracker(
       {
         onAttach: (field) => {
+          // The field may live inside a modal dialog opened after us.
+          reparentForModal(field.element);
           button?.destroy();
           button = createButton({
             onActivate: () => {
@@ -187,7 +238,7 @@ interface Suppression {
  * Every reason not to appear, resolved in one round trip. Ordered so the
  * cheapest and most absolute checks decide first.
  */
-async function loadSuppression(): Promise<Suppression> {
+async function loadSuppression(): Promise<Suppression | null> {
   try {
     const settings = await sendMessage({ type: 'settings:get' });
     if (settings.globallyHidden) return { suppressed: true, corner: null };
@@ -212,9 +263,24 @@ async function loadSuppression(): Promise<Suppression> {
       corner: rule.buttonCorner,
     };
   } catch {
-    // The worker is unreachable (still starting, or the extension is being
-    // updated). Staying quiet is the safe default — appearing without knowing
-    // whether the user hid us is the failure that matters.
-    return { suppressed: true, corner: null };
+    // Unreachable *this attempt*. In MV3 an asleep worker is the normal case
+    // at document_idle, not an anomaly, so treating one failed round trip as
+    // "the user hid us" would silently disable the extension on slow loads.
+    // The caller retries; only a definitive answer suppresses.
+    return null;
   }
+}
+
+/**
+ * Wake the worker and get a definitive answer. Bounded: if the worker really
+ * is unavailable after several tries, stay quiet rather than appear without
+ * knowing whether the user hid us.
+ */
+async function resolveSuppression(): Promise<Suppression> {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const result = await loadSuppression();
+    if (result) return result;
+    await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+  }
+  return { suppressed: true, corner: null };
 }

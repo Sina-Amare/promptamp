@@ -89,24 +89,27 @@ export default defineBackground(() => {
     });
   });
 
+  // Returning a promise IS the webextension-polyfill contract for an async
+  // reply — the `return true` + sendResponse callback style silently never
+  // delivers through it. The upstream type models the callback style only.
   browser.runtime.onMessage.addListener(
-    (message: unknown, sender, sendResponse: (value: unknown) => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
+    (message: unknown, sender): Promise<unknown> | undefined => {
       // Principle 3. There is no `externally_connectable`, so a web page cannot
       // reach us — but another *extension* can, and an unvalidated listener
       // would happily read settings or start a paid API call on its behalf.
-      if (!isTrustedSender(sender)) return false;
-      if (!isRequest(message)) return false;
+      if (!isTrustedSender(sender)) return undefined;
+      if (!isRequest(message)) return undefined;
 
-      handle(message, sender.tab?.id, sender.frameId).then(
-        sendResponse,
+      // Return the promise itself. WXT ships the webextension-polyfill, whose
+      // contract is promise-based — the `return true` + sendResponse callback
+      // style silently never delivers a reply through it.
+      return handle(message, sender.tab?.id, sender.frameId).catch(
         (error: unknown) => {
           console.error('[promptamp]', error);
-          sendResponse(undefined);
+          return undefined;
         },
       );
-
-      // Keeps the message channel open for the async handler above.
-      return true;
     },
   );
 });

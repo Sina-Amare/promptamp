@@ -10,13 +10,35 @@
  *    page behind us can be any colour at all.
  */
 export const BUTTON_CSS = `
+/*
+ * Fixed and promoted to the top layer via the Popover API.
+ *
+ * A modal <dialog> makes the entire document outside it inert, and our host
+ * lives in <body> — so a button anchored to a composer *inside* a dialog would
+ * render but refuse every click. Top-layer elements stay interactive alongside
+ * a modal dialog, which is the only way to support that case.
+ *
+ * Being fixed also means every coordinate here is viewport-relative, matching
+ * getBoundingClientRect and elementsFromPoint with no scroll conversion.
+ */
 .pa-button-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
   z-index: var(--ph-z);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  overflow: visible;
   /* The layer is a positioning frame only — clicks pass through to the page. */
   pointer-events: none;
+}
+
+/* The UA hides an unshown popover; ours is shown for the life of the script. */
+.pa-button-layer:popover-open {
+  display: block;
 }
 
 .pa-button-wrap {
