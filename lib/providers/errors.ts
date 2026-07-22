@@ -1,5 +1,5 @@
 import type { ErrorKind, SafeError } from '../messaging/protocol';
-import { redactKeys } from '../storage/credentials';
+import { redactKeys } from '../redact';
 
 /**
  * Every provider failure becomes one of the wire-level `ErrorKind`s before it

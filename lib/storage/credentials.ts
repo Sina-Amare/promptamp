@@ -5,6 +5,10 @@ import {
   providerCredSchema,
 } from './schemas';
 
+// Re-exported so existing callers keep one import site; the implementation
+// lives in a storage-free module so the error layer can use it anywhere.
+export { redactKeys } from '../redact';
+
 /**
  * API keys. **Background worker only.**
  *
@@ -81,19 +85,4 @@ export async function listConfiguredProviders(): Promise<
       },
     ];
   });
-}
-
-/**
- * Redact anything key-shaped before it reaches a log, an error message, or the
- * UI. Provider keys are long, high-entropy, and often prefixed (`sk-`, `gsk_`,
- * `sk-or-v1-`); a stack trace that echoes a request header would otherwise leak
- * one into a bug report the user pastes in public.
- */
-export function redactKeys(text: string): string {
-  return text
-    .replace(
-      /\b(sk-or-v1-|sk-ant-|sk-|gsk_|AIza)[A-Za-z0-9_-]{8,}/g,
-      '$1[redacted]',
-    )
-    .replace(/\b[Bb]earer\s+[A-Za-z0-9._-]{16,}/g, 'Bearer [redacted]');
 }
