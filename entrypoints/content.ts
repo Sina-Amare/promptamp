@@ -177,6 +177,13 @@ export default defineContentScript({
           if (state === 'loading' || state === 'error') return;
           if (typing) button.setState('typing');
         },
+        onFieldTab: () => {
+          // Puts the button immediately after the field in tab order, which
+          // DOM position cannot do — the host lives at the end of <body>.
+          if (!button) return false;
+          button.focus();
+          return true;
+        },
       },
       {
         buttonSize: 40,

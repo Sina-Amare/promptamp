@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Trusted Types, enforced.
+
+      This is what Google, and a growing number of other sites, ship. Under
+      this policy *any* assignment to innerHTML / outerHTML /
+      insertAdjacentHTML throws a TypeError — which would take the entire
+      injected UI down, on exactly the sites people most want a prompt helper.
+
+      The page exists so that failure is a red test rather than a bug report.
+      `require-trusted-types-for 'script'` is the enforcing directive;
+      `trusted-types 'none'` refuses every policy, so nothing can opt out.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="require-trusted-types-for 'script'; trusted-types 'none'"
+    />
+    <title>PromptAmp — Trusted Types page</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Trusted Types enforced</h1>
+      <p>
+        Any string-to-HTML sink on this page throws. PromptAmp must work here
+        exactly as it does anywhere else.
+      </p>
+    </header>
+
+    <main>
+      <section>
+        <h2>Composer</h2>
+        <article>
+          <label for="tt-textarea">Draft</label>
+          <textarea
+            id="tt-textarea"
+            data-testid="tt-textarea"
+            rows="4"
+            placeholder="Write a draft…"
+          ></textarea>
+        </article>
+      </section>
+
+      <section>
+        <h2>Violation counter</h2>
+        <p id="violations" data-testid="violations">0</p>
+      </section>
+    </main>
+
+    <script type="module" src="./trusted-types.ts"></script>
+  </body>
+</html>

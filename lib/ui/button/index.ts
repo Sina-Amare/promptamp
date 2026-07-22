@@ -35,6 +35,7 @@ export interface ButtonCallbacks {
 
 export interface ButtonHandle {
   wrap: HTMLElement;
+  focus: () => void;
   setState: (state: ButtonState) => void;
   setProfile: (name: string, category: string) => void;
   setInstant: (instant: boolean) => void;
@@ -240,6 +241,9 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
 
   return {
     wrap,
+    focus: () => {
+      button.focus();
+    },
     setState,
     getState: () => state,
     setProfile: (name, category) => {

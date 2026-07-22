@@ -38,6 +38,15 @@ export interface TrackerCallbacks {
   onDraftChange: (draft: string, enhanceable: boolean) => void;
   /** The user is mid-keystroke; the button should recede. */
   onTypingChange: (typing: boolean) => void;
+  /**
+   * Tab was pressed in the field. Return true to claim focus for the button.
+   *
+   * The host element lives at the end of `<body>`, so DOM order would put the
+   * button somewhere arbitrary — usually after the entire page. UX-SPEC §6
+   * requires it immediately after the field, and intercepting Tab achieves
+   * that without inserting our node into the page's own layout.
+   */
+  onFieldTab: () => boolean;
 }
 
 export interface TrackerOptions {
@@ -170,6 +179,14 @@ export function createFieldTracker(
     }, BLUR_GRACE_MS);
   }
 
+  function onKeyDown(event: KeyboardEvent): void {
+    if (!field || event.target !== field) return;
+    // Forward Tab only. Shift+Tab must keep doing what the page expects, and
+    // the panel handles its own focus wrap once it is open.
+    if (event.key !== 'Tab' || event.shiftKey || event.defaultPrevented) return;
+    if (callbacks.onFieldTab()) event.preventDefault();
+  }
+
   function onInput(event: Event): void {
     if (!field || event.target !== field) return;
     emitDraft();
@@ -197,6 +214,7 @@ export function createFieldTracker(
       document.addEventListener('focusin', onFocusIn, true);
       document.addEventListener('focusout', onFocusOut, true);
       document.addEventListener('input', onInput, true);
+      document.addEventListener('keydown', onKeyDown, true);
       globalThis.addEventListener('resize', onResize, { passive: true });
       globalThis.addEventListener('scroll', onScroll, { passive: true });
 
@@ -208,6 +226,7 @@ export function createFieldTracker(
       document.removeEventListener('focusin', onFocusIn, true);
       document.removeEventListener('focusout', onFocusOut, true);
       document.removeEventListener('input', onInput, true);
+      document.removeEventListener('keydown', onKeyDown, true);
       globalThis.removeEventListener('resize', onResize);
       globalThis.removeEventListener('scroll', onScroll);
       detach();
