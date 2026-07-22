@@ -107,6 +107,12 @@ export function mapStatus(status: number, body: string): ErrorKind {
     return 'too-long';
   // A 404 on a chat endpoint is almost always the model name, not the route —
   // the route came from our own registry. Some servers say it with a 400.
+  //
+  // Verified against the live APIs rather than assumed:
+  //   Groq       → "The model `x` does not exist or you do not have access"
+  //   OpenRouter → "x is not a valid model ID"
+  // Both map here; both bad keys map to `bad-key` ("Invalid API Key" /
+  // "User not found").
   if (status === 404) return 'bad-model';
   if (status === 400 && /model/i.test(body)) return 'bad-model';
   return 'unknown';
