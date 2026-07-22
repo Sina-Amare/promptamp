@@ -111,12 +111,19 @@ export default tseslint.config(
   },
 
   // Config files and tests run in Node and aren't part of the shipped bundle.
+  //
+  // The Trusted-Types ban is lifted for test fixtures only: it exists to stop a
+  // string-HTML sink reaching a *page* that enforces Trusted Types, and no test
+  // file is ever injected into one. Building DOM fixtures with innerHTML keeps
+  // them readable; the ban stays absolute everywhere that ships.
   {
     files: ['*.config.ts', 'tests/**/*.ts', 'e2e/**/*.ts'],
     rules: {
+      'no-restricted-syntax': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
     },
   },
 
