@@ -18,6 +18,17 @@ export const en = {
   /* ── the injected button (UX-SPEC §1) ─────────────────────────── */
   'button.tooShort': 'Write a draft first',
   'button.dismiss': 'Hide PromptAmp',
+  'button.idle': 'Enhance draft — PromptAmp',
+  'button.loading': 'Stop enhancing',
+  'button.done': 'Draft enhanced',
+  'button.error': 'Enhancement failed — try again',
+  'button.tip': 'Enhance draft{profile} · Alt+E',
+  /**
+   * U+2068/U+2069 isolate the profile name. A Latin brand token sitting in a
+   * line of other text can otherwise drag the surrounding words out of order;
+   * `<bdi>` is unavailable because a tooltip is a plain-string context.
+   */
+  'button.tipProfile': ' · Profile: ⁨{name}⁩',
 
   /* ── the dismissal menu (§1.5) ────────────────────────────────── */
   'menu.hideUntilReload': 'Hide until next visit',

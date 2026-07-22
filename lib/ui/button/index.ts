@@ -1,4 +1,4 @@
-import { dirFor, t } from '../../i18n';
+import { type MessageKey, t } from '../../i18n';
 import { el } from '../host';
 import { CATEGORY_COLORS } from '../tokens';
 import {
@@ -44,13 +44,13 @@ export interface ButtonHandle {
   destroy: () => void;
 }
 
-const LABELS: Record<ButtonState, string> = {
-  ghost: 'Write a draft first',
-  idle: 'Enhance draft — PromptAmp',
-  typing: 'Enhance draft — PromptAmp',
-  loading: 'Stop enhancing',
-  done: 'Draft enhanced',
-  error: 'Enhancement failed — try again',
+const LABELS: Record<ButtonState, MessageKey> = {
+  ghost: 'button.tooShort',
+  idle: 'button.idle',
+  typing: 'button.idle',
+  loading: 'button.loading',
+  done: 'button.done',
+  error: 'button.error',
 };
 
 const prefersReducedMotion = (): boolean =>
@@ -70,7 +70,7 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
     class: 'pa-button',
     attrs: {
       type: 'button',
-      'aria-label': LABELS.ghost,
+      'aria-label': t(LABELS.ghost),
       'aria-haspopup': 'dialog',
       'aria-keyshortcuts': 'Alt+E',
       'aria-expanded': 'false',
@@ -102,9 +102,6 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
     attrs: {
       'data-state': 'ghost',
       'data-entering': 'true',
-      // Re-declared per surface: the layer above is a physical coordinate
-      // frame and stays LTR, so each surface states its own reading direction.
-      dir: dirFor(),
     },
     children: [button, dismiss, tooltip],
   });
@@ -113,7 +110,7 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
 
   function render(): void {
     wrap.setAttribute('data-state', state);
-    button.setAttribute('aria-label', LABELS[state]);
+    button.setAttribute('aria-label', t(LABELS[state]));
     button.setAttribute('aria-disabled', state === 'ghost' ? 'true' : 'false');
     // aria-busy tells a screen reader the control is working; it is cleared in
     // every exit path, because forgetting to reset it silences the region for
@@ -140,14 +137,13 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
   }
 
   function tooltipText(): string {
-    if (state === 'ghost') return 'Write a draft first';
-    if (state === 'loading') return 'Stop enhancing';
-    if (state === 'error') return 'Enhancement failed — try again';
-    // U+2068/U+2069 isolate the profile name: a Latin brand token inside RTL
-    // chrome would otherwise drag the rest of the line out of order. <bdi> is
-    // not available here — a tooltip is a plain-string context.
-    const profile = profileName ? ` · Profile: ⁨${profileName}⁩` : '';
-    return `Enhance draft${profile} · Alt+E`;
+    if (state === 'ghost') return t('button.tooShort');
+    if (state === 'loading') return t('button.loading');
+    if (state === 'error') return t('button.error');
+
+    return t('button.tip', {
+      profile: profileName ? t('button.tipProfile', { name: profileName }) : '',
+    });
   }
 
   function setState(next: ButtonState): void {
@@ -218,9 +214,9 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
       class: 'pa-menu',
       attrs: { role: 'menu', 'aria-label': t('button.dismiss') },
       children: [
-        choice('Hide until next visit', 'session'),
-        choice('Hide on this site', 'site'),
-        choice('Hide everywhere', 'everywhere'),
+        choice(t('menu.hideUntilReload'), 'session'),
+        choice(t('menu.hideOnSite'), 'site'),
+        choice(t('menu.hideEverywhere'), 'everywhere'),
       ],
     });
 

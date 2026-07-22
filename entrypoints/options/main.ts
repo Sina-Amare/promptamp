@@ -1,10 +1,5 @@
 import { BUILTIN_PROFILES } from '../../lib/enhance/prompts';
-import {
-  applyLocaleToDocument,
-  type MessageKey,
-  setLocale,
-  t,
-} from '../../lib/i18n';
+import { type MessageKey, t } from '../../lib/i18n';
 import { sendMessage } from '../../lib/messaging/client';
 import { missingPermissions, requestPermission } from '../../lib/permissions';
 import type { ConfiguredConnection } from '../../lib/messaging/protocol';
@@ -922,33 +917,6 @@ async function behaviorTab(): Promise<HTMLElement> {
     });
   });
 
-  // Independent of the browser's locale on purpose: a Persian speaker on an
-  // English browser is exactly the person this setting exists for.
-  const uiLanguage = el('select');
-  for (const [value, label] of [
-    ['auto', t('behavior.uiLanguageAuto')],
-    ['en', 'English'],
-    ['fa', 'فارسی'],
-  ] as const) {
-    const option = el('option', { text: label, attrs: { value } });
-    if (settings.uiLanguage === value) option.selected = true;
-    uiLanguage.append(option);
-  }
-  uiLanguage.addEventListener('change', () => {
-    void (async () => {
-      await sendMessage({
-        type: 'settings:patch',
-        patch: { uiLanguage: uiLanguage.value as 'auto' | 'en' | 'fa' },
-      });
-      // Re-render immediately: a language setting that needs a reload to take
-      // effect makes the user doubt it worked.
-      setLocale(uiLanguage.value as 'auto' | 'en' | 'fa');
-      applyLocaleToDocument();
-      renderTabs();
-      await renderPanel();
-    })();
-  });
-
   const languageList = el('datalist', {
     attrs: { id: 'pa-output-languages' },
     children: OUTPUT_LANGUAGES.map((name) =>
@@ -981,12 +949,6 @@ async function behaviorTab(): Promise<HTMLElement> {
             children: [
               el('span', { text: t('behavior.defaultProfile') }),
               defaultProfile,
-            ],
-          }),
-          el('label', {
-            children: [
-              el('span', { text: t('behavior.uiLanguage') }),
-              uiLanguage,
             ],
           }),
           el('label', {
@@ -1259,16 +1221,5 @@ function download(filename: string, contents: string): void {
   URL.revokeObjectURL(url);
 }
 
-/**
- * Locale first, then chrome. Building the tab bar before the catalogue is
- * selected would render every label in English and then swap it, which reads
- * as a bug even when it lasts one frame.
- */
-void (async () => {
-  const settings = await sendMessage({ type: 'settings:get' });
-  setLocale(settings.uiLanguage);
-  applyLocaleToDocument();
-
-  renderTabs();
-  await renderPanel();
-})();
+renderTabs();
+void renderPanel();

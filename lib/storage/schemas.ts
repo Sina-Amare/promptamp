@@ -142,7 +142,6 @@ export const settingsSchema = z.object({
   softCapPerDay: z.number().int().min(0).max(10_000).default(100),
   historyEnabled: z.boolean().default(true),
   historyLimit: z.number().int().min(0).max(1000).default(200),
-  uiLanguage: z.enum(['auto', 'en', 'fa']).default('auto'),
   /**
    * Language the *rewrite* is written in, independent of the draft's language —
    * so a Persian draft can produce an English prompt. Empty means each profile

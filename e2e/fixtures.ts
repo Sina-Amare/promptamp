@@ -99,7 +99,6 @@ export async function useMockChain(
         softCapPerDay: 0,
         historyEnabled: true,
         historyLimit: 200,
-        uiLanguage: 'auto',
         outputLanguageOverride: '',
       },
       credentials: modelNames.map((model, index) => ({

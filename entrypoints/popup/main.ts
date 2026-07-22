@@ -1,5 +1,5 @@
 import { browser } from '#imports';
-import { applyLocaleToDocument, setLocale, t } from '../../lib/i18n';
+import { t } from '../../lib/i18n';
 import { sendMessage } from '../../lib/messaging/client';
 import { el } from '../../lib/ui/host';
 
@@ -33,11 +33,6 @@ async function render(): Promise<void> {
   const settings = await sendMessage({ type: 'settings:get' });
   const profiles = await sendMessage({ type: 'profiles:list' });
   const connections = await sendMessage({ type: 'connections:list' });
-
-  // Before anything is built, so no label is constructed in the wrong locale
-  // and no frame renders left-to-right on its way to right-to-left.
-  setLocale(settings.uiLanguage);
-  applyLocaleToDocument();
 
   const rule = origin
     ? await sendMessage({ type: 'siteRule:get', origin })

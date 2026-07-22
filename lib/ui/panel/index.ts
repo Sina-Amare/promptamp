@@ -1,6 +1,6 @@
 import { ADJUST_PRESETS } from '../../enhance/assemble';
 import type { SafeError } from '../../messaging/protocol';
-import { dirFor, type MessageKey, t } from '../../i18n';
+import { type MessageKey, t } from '../../i18n';
 import { el } from '../host';
 import { computeDiff, isUnchanged, renderDiff } from './diff';
 import {
@@ -272,9 +272,6 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
       // Deliberately no aria-modal: the host page stays visible and usable,
       // and claiming modality would hide it from screen readers entirely.
       tabindex: '-1',
-      // The panel's chrome follows the user's language; the draft inside it
-      // keeps `dir="auto"` and follows its own.
-      dir: dirFor(),
     },
     children: [head, bodyWrap, status, toggleRow, adjustRow, actionRow],
   });

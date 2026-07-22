@@ -18,7 +18,7 @@ import {
   type EnhanceServerMessage,
   type SafeError,
 } from '../messaging/protocol';
-import { dirFor, t } from '../i18n';
+import { t } from '../i18n';
 import { el } from './host';
 import { createPanel, type PanelHandle } from './panel';
 import { createSmoothStream, type SmoothStream } from './panel/stream';
@@ -273,7 +273,6 @@ export function createSession(
     });
     const pill = el('div', {
       class: 'pa-undo',
-      attrs: { dir: dirFor() },
       children: [el('span', { text: t('undo.replaced') }), undo, announce],
     });
 
