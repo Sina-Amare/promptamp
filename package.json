@@ -1,0 +1,51 @@
+{
+  "name": "promptamp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "BYOK browser extension that turns rough drafts into engineered prompts, in-place, on any site.",
+  "license": "MIT",
+  "author": "Sina Amareh",
+  "homepage": "https://github.com/Sina-Amare/promptamp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sina-Amare/promptamp.git"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox --mv3",
+    "build": "pnpm build:chrome && pnpm build:firefox && pnpm build:edge",
+    "build:chrome": "wxt build",
+    "build:firefox": "wxt build -b firefox --mv3",
+    "build:edge": "wxt build -b edge",
+    "zip": "pnpm zip:chrome && pnpm zip:firefox && pnpm zip:edge",
+    "zip:chrome": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox --mv3",
+    "zip:edge": "wxt zip -b edge",
+    "typecheck": "wxt prepare && tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "postinstall": "wxt prepare"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.61.1",
+    "@types/node": "22.20.1",
+    "eslint": "10.7.0",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10",
+    "wxt": "0.20.27"
+  }
+}

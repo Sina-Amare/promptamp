@@ -14,6 +14,11 @@ web-ext-artifacts/
 *.pem
 *.key
 
+# ── Test output ─────────────────────────────────────────
+playwright-report/
+test-results/
+coverage/
+
 # ── Logs & caches ───────────────────────────────────────
 logs/
 *.log

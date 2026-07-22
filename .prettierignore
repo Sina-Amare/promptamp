@@ -1,0 +1,9 @@
+.output/
+.wxt/
+node_modules/
+dist/
+playwright-report/
+test-results/
+playground/vendor/
+pnpm-lock.yaml
+*.md
