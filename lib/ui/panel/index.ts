@@ -1,5 +1,6 @@
 import { ADJUST_PRESETS } from '../../enhance/assemble';
 import type { SafeError } from '../../messaging/protocol';
+import { dirFor, type MessageKey, t } from '../../i18n';
 import { el } from '../host';
 import { computeDiff, isUnchanged, renderDiff } from './diff';
 import {
@@ -70,30 +71,33 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
   const titleId = 'pa-panel-title';
   const title = el('h2', {
     class: 'pa-title',
-    text: 'Enhanced draft',
+    text: t('panel.title'),
     // tabindex -1 so focus can land here on open without adding a tab stop.
     attrs: { id: titleId, tabindex: '-1' },
   });
 
   const chipLabel = el('span', { text: 'General' });
-  const chipAuto = el('span', { class: 'pa-chip-auto', text: ' · auto' });
+  const chipAuto = el('span', {
+    class: 'pa-chip-auto',
+    text: t('panel.profileAuto'),
+  });
   const chip = el('button', {
     class: 'pa-chip',
     attrs: {
       type: 'button',
       'aria-haspopup': 'listbox',
-      'aria-label': 'Change profile',
+      'aria-label': t('panel.changeProfile'),
     },
     children: [chipLabel, chipAuto, chevronDown()],
   });
   chip.addEventListener('click', callbacks.onProfileClick);
 
   const prevBtn = el('button', {
-    attrs: { type: 'button', 'aria-label': 'Previous version' },
+    attrs: { type: 'button', 'aria-label': t('panel.prevVersion') },
     children: [chevronStart()],
   });
   const nextBtn = el('button', {
-    attrs: { type: 'button', 'aria-label': 'Next version' },
+    attrs: { type: 'button', 'aria-label': t('panel.nextVersion') },
     children: [chevronEnd()],
   });
   const counter = el('span', { text: '' });
@@ -113,7 +117,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
 
   const closeBtn = el('button', {
     class: 'pa-icon-btn',
-    attrs: { type: 'button', 'aria-label': 'Discard' },
+    attrs: { type: 'button', 'aria-label': t('panel.discard') },
     children: [closeIcon()],
   });
   closeBtn.addEventListener('click', callbacks.onDiscard);
@@ -133,7 +137,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
       contenteditable: 'true',
       role: 'textbox',
       'aria-multiline': 'true',
-      'aria-label': 'Enhanced draft, editable',
+      'aria-label': t('panel.bodyAria'),
       // First-strong detection per block: a Persian draft resolves RTL while
       // an English image prompt in the same panel resolves LTR, with no
       // special-casing.
@@ -155,12 +159,12 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
   const diffPill = el('button', {
     class: 'pa-pill',
     attrs: { type: 'button', 'aria-pressed': 'false' },
-    text: 'Show changes',
+    text: t('panel.showChanges'),
   });
   const originalPill = el('button', {
     class: 'pa-pill',
     attrs: { type: 'button', 'aria-pressed': 'false' },
-    text: 'Original',
+    text: t('panel.showOriginal'),
   });
 
   diffPill.addEventListener('click', () => {
@@ -185,8 +189,8 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     class: 'pa-adjust-input',
     attrs: {
       type: 'text',
-      placeholder: 'Describe a change…',
-      'aria-label': 'Describe a change',
+      placeholder: t('panel.adjustPlaceholder'),
+      'aria-label': t('panel.adjustAria'),
     },
   });
 
@@ -206,7 +210,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
         const pill = el('button', {
           class: 'pa-pill',
           attrs: { type: 'button' },
-          text: preset.label,
+          text: t(preset.labelKey),
         });
         pill.addEventListener('click', () => {
           callbacks.onRetry(preset.instruction);
@@ -224,22 +228,22 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     attrs: { type: 'button' },
     // "Replace draft", not "Insert below" — inserting below makes no sense in
     // a prompt box.
-    text: 'Replace draft',
+    text: t('panel.accept'),
   });
   const retryBtn = el('button', {
     class: 'pa-secondary',
     attrs: { type: 'button' },
-    text: 'Retry',
+    text: t('panel.retry'),
   });
   const copyBtn = el('button', {
     class: 'pa-secondary',
-    attrs: { type: 'button', 'aria-label': 'Copy' },
+    attrs: { type: 'button', 'aria-label': t('panel.copy') },
     children: [copyIcon()],
   });
   const discardBtn = el('button', {
     class: 'pa-quiet',
     attrs: { type: 'button' },
-    text: 'Discard',
+    text: t('panel.discard'),
   });
 
   acceptBtn.addEventListener('click', () => {
@@ -268,6 +272,9 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
       // Deliberately no aria-modal: the host page stays visible and usable,
       // and claiming modality would hide it from screen readers entirely.
       tabindex: '-1',
+      // The panel's chrome follows the user's language; the draft inside it
+      // keeps `dir="auto"` and follows its own.
+      dir: dirFor(),
     },
     children: [head, bodyWrap, status, toggleRow, adjustRow, actionRow],
   });
@@ -419,9 +426,9 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
             el('div', { class: 'pa-skeleton-line' }),
           ],
         }),
-        el('p', { class: 'pa-status', text: 'Enhancing draft' }),
+        el('p', { class: 'pa-status', text: t('panel.busy') }),
       );
-      status.textContent = 'Enhancing draft';
+      status.textContent = t('panel.busy');
       setControlsEnabled(false);
     },
 
@@ -431,7 +438,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
       bodyWrap.replaceChildren(body);
       body.replaceChildren();
       body.setAttribute('contenteditable', 'false');
-      status.textContent = 'Enhancing draft';
+      status.textContent = t('panel.busy');
     },
 
     streamText: (partial) => {
@@ -468,8 +475,8 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
         setTimeout(() => body.removeAttribute('data-fresh'), 250);
 
         status.textContent = isUnchanged(computeDiff(original, text))
-          ? 'This already reads well'
-          : 'Enhanced version ready';
+          ? t('panel.unchanged')
+          : t('panel.ready');
         setControlsEnabled(true);
       } finally {
         // In a finally block on purpose: leaving aria-busy set permanently
@@ -484,7 +491,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
           class: 'pa-secondary',
           attrs: { type: 'button' },
           text: error.retryAfterSec
-            ? `Retry in ${String(error.retryAfterSec)}s`
+            ? t('error.retryIn', { seconds: error.retryAfterSec })
             : 'Retry',
         });
         retry.addEventListener('click', () => {
@@ -494,7 +501,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
         const dismiss = el('button', {
           class: 'pa-quiet',
           attrs: { type: 'button' },
-          text: 'Close',
+          text: t('panel.close'),
         });
         dismiss.addEventListener('click', callbacks.onDiscard);
 
@@ -534,7 +541,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
                 : null,
               el('p', {
                 class: 'pa-status',
-                text: 'Your draft is unchanged.',
+                text: t('error.draftSafe'),
               }),
               el('div', {
                 class: 'pa-error-actions',
@@ -618,28 +625,26 @@ function normalise(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-/** Cause-class names, so the user knows whether retrying can possibly help. */
+/**
+ * Cause-class names, so the user knows whether retrying can possibly help.
+ *
+ * A `Record` rather than a switch: exhaustiveness is then enforced by the type
+ * rather than by remembering to add a case, which is how `bad-model` came to
+ * be missing here in the first place.
+ */
+const ERROR_TITLES: Record<SafeError['kind'], MessageKey> = {
+  'bad-key': 'error.badKey',
+  'bad-model': 'error.badModel',
+  'rate-limited': 'error.rateLimited',
+  quota: 'error.quota',
+  network: 'error.network',
+  refusal: 'error.refusal',
+  'too-long': 'error.tooLong',
+  'soft-cap': 'error.softCap',
+  cancelled: 'error.cancelled',
+  unknown: 'error.unknown',
+};
+
 function titleFor(error: SafeError): string {
-  switch (error.kind) {
-    case 'bad-key':
-      return 'API key problem';
-    case 'bad-model':
-      return 'Model unavailable';
-    case 'rate-limited':
-      return 'Rate limited';
-    case 'quota':
-      return 'Out of quota';
-    case 'network':
-      return 'Connection problem';
-    case 'refusal':
-      return 'Model declined';
-    case 'too-long':
-      return 'Draft too long';
-    case 'soft-cap':
-      return 'Daily limit reached';
-    case 'cancelled':
-      return 'Cancelled';
-    case 'unknown':
-      return 'Something went wrong';
-  }
+  return t(ERROR_TITLES[error.kind]);
 }

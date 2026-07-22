@@ -155,11 +155,19 @@ describe('length gates', () => {
   });
 
   it('offers the Adjust presets from the UX spec', () => {
-    expect(ADJUST_PRESETS.map((p) => p.label)).toEqual([
-      'Shorter',
-      'Longer',
-      'More specific',
+    expect(ADJUST_PRESETS.map((p) => p.id)).toEqual([
+      'shorter',
+      'longer',
+      'specific',
     ]);
+  });
+
+  it('keeps the adjust instruction in English whatever the UI language', () => {
+    // It joins an English system prompt; a Persian instruction there is the
+    // language drift the profiles spend a paragraph each guarding against.
+    for (const preset of ADJUST_PRESETS) {
+      expect(preset.instruction).toMatch(/^[\x20-\x7E]+$/);
+    }
   });
 });
 

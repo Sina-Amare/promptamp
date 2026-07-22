@@ -18,6 +18,7 @@ import {
   type EnhanceServerMessage,
   type SafeError,
 } from '../messaging/protocol';
+import { dirFor, t } from '../i18n';
 import { el } from './host';
 import { createPanel, type PanelHandle } from './panel';
 import { createSmoothStream, type SmoothStream } from './panel/stream';
@@ -191,7 +192,10 @@ export function createSession(
           // that a different model wrote this.
           if (message.result.fellBackFrom) {
             ensurePanel().showNotice(
-              `${message.result.fellBackFrom.label} failed — used ${message.result.connectionLabel} instead.`,
+              t('error.fellBack', {
+                failed: message.result.fellBackFrom.label,
+                used: message.result.connectionLabel,
+              }),
             );
           }
           break;
@@ -236,16 +240,13 @@ export function createSession(
     if (!outcome.ok) {
       ensurePanel().showError({
         kind: 'unknown',
-        message:
-          "This site's editor doesn't allow direct insertion — copy instead.",
+        message: t('error.noInsert'),
       });
       return;
     }
 
     if (outcome.clipboardFallback) {
-      ensurePanel().showNotice(
-        "This site's editor doesn't allow direct insertion — copied instead.",
-      );
+      ensurePanel().showNotice(t('error.copiedInstead'));
       return;
     }
 
@@ -263,13 +264,17 @@ export function createSession(
     const announce = el('span', {
       class: 'pa-sr-only',
       attrs: { role: 'status', 'aria-live': 'polite' },
-      text: 'Draft replaced — press Undo to restore.',
+      text: t('undo.announce'),
     });
 
-    const undo = el('button', { attrs: { type: 'button' }, text: 'Undo' });
+    const undo = el('button', {
+      attrs: { type: 'button' },
+      text: t('undo.action'),
+    });
     const pill = el('div', {
       class: 'pa-undo',
-      children: [el('span', { text: 'Draft replaced' }), undo, announce],
+      attrs: { dir: dirFor() },
+      children: [el('span', { text: t('undo.replaced') }), undo, announce],
     });
 
     // Viewport coordinates: getBoundingClientRect already returns them, and

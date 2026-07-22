@@ -1,3 +1,4 @@
+import { getLocale } from '../i18n';
 import { TOKENS_CSS } from './tokens';
 import { type Theme, watchTheme } from './theme';
 
@@ -52,6 +53,12 @@ export function createShadowHost(options: CreateHostOptions): ShadowHost {
   // and defining one would leave a permanent, enumerable trace in the registry.
   const element = document.createElement(tag);
   element.setAttribute('data-promptamp-host', '');
+
+  // Language, for screen readers and hyphenation. Direction is deliberately
+  // *not* set here: the positioning layer inside is a physical coordinate
+  // frame, and flipping it moves every surface a viewport-width off-screen.
+  // Each surface declares its own `dir` instead.
+  element.setAttribute('lang', getLocale());
 
   // The host itself is layout-neutral; every surface inside positions itself.
   element.style.setProperty('all', 'initial');

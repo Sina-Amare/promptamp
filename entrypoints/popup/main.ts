@@ -1,4 +1,5 @@
 import { browser } from '#imports';
+import { applyLocaleToDocument, setLocale, t } from '../../lib/i18n';
 import { sendMessage } from '../../lib/messaging/client';
 import { el } from '../../lib/ui/host';
 
@@ -32,6 +33,12 @@ async function render(): Promise<void> {
   const settings = await sendMessage({ type: 'settings:get' });
   const profiles = await sendMessage({ type: 'profiles:list' });
   const connections = await sendMessage({ type: 'connections:list' });
+
+  // Before anything is built, so no label is constructed in the wrong locale
+  // and no frame renders left-to-right on its way to right-to-left.
+  setLocale(settings.uiLanguage);
+  applyLocaleToDocument();
+
   const rule = origin
     ? await sendMessage({ type: 'siteRule:get', origin })
     : null;
@@ -42,10 +49,10 @@ async function render(): Promise<void> {
 
   /* Profile quick-switch — pins for this site, per UX-SPEC §3. */
   const profileSelect = el('select', {
-    attrs: { 'aria-label': 'Profile for this site' },
+    attrs: { 'aria-label': t('popup.profileAria') },
   });
   profileSelect.append(
-    el('option', { text: 'Automatic', attrs: { value: '' } }),
+    el('option', { text: t('popup.profileAuto'), attrs: { value: '' } }),
     ...profiles.map((profile) => {
       const option = el('option', {
         text: profile.name,
@@ -65,15 +72,15 @@ async function render(): Promise<void> {
         patch: { pinnedProfileId: profileSelect.value || null },
       });
       status.textContent = profileSelect.value
-        ? 'Pinned for this site.'
-        : 'Back to automatic.';
+        ? t('popup.profilePinned')
+        : t('popup.profileUnpinned');
     })();
   });
 
   /* Pause — for screen shares. */
   const pause = el('button', {
     class: paused ? 'active' : '',
-    text: paused ? 'Paused — resume now' : 'Pause on all sites for 1 hour',
+    text: paused ? t('popup.resume') : t('popup.pauseHour'),
     attrs: { type: 'button' },
   });
   pause.addEventListener('click', () => {
@@ -90,7 +97,7 @@ async function render(): Promise<void> {
   const hidden = rule?.hidden ?? false;
   const hideSite = el('button', {
     class: hidden ? 'active' : '',
-    text: hidden ? 'Show on this site' : 'Hide on this site',
+    text: hidden ? t('popup.showHere') : t('popup.hideHere'),
     attrs: { type: 'button' },
   });
   hideSite.disabled = !origin;
@@ -111,8 +118,8 @@ async function render(): Promise<void> {
   const globalToggle = el('button', {
     class: settings.globallyHidden ? 'active' : '',
     text: settings.globallyHidden
-      ? 'Turn PromptAmp back on'
-      : 'Hide everywhere',
+      ? t('popup.turnBackOn')
+      : t('popup.hideEverywhere'),
     attrs: { type: 'button' },
   });
   globalToggle.addEventListener('click', () => {
@@ -126,7 +133,7 @@ async function render(): Promise<void> {
   });
 
   const openOptions = el('button', {
-    text: 'Settings…',
+    text: t('popup.settings'),
     attrs: { type: 'button' },
   });
   openOptions.addEventListener('click', () => {
@@ -140,7 +147,7 @@ async function render(): Promise<void> {
   if (connections.length === 0) {
     setupPrompt = el('button', {
       class: 'active',
-      text: 'Add an API key to get started',
+      text: t('popup.setup'),
       attrs: { type: 'button' },
     });
     setupPrompt.addEventListener('click', () => {
@@ -151,10 +158,10 @@ async function render(): Promise<void> {
 
   const children: (Node | null)[] = [
     el('h1', { text: 'PromptAmp' }),
-    el('p', { class: 'site', text: origin ?? 'Not available on this page' }),
+    el('p', { class: 'site', text: origin ?? t('popup.notAvailable') }),
     setupPrompt,
     el('label', {
-      children: [el('span', { text: 'Profile on this site' }), profileSelect],
+      children: [el('span', { text: t('popup.profileHere') }), profileSelect],
     }),
     el('hr'),
     pause,

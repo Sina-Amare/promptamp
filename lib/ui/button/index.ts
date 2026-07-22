@@ -1,3 +1,4 @@
+import { dirFor, t } from '../../i18n';
 import { el } from '../host';
 import { CATEGORY_COLORS } from '../tokens';
 import {
@@ -83,14 +84,14 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
   const tooltip = el('span', {
     class: 'pa-tooltip',
     attrs: { role: 'tooltip', id: 'pa-tip' },
-    text: 'Write a draft first',
+    text: t('button.tooShort'),
   });
 
   const dismiss = el('button', {
     class: 'pa-dismiss',
     attrs: {
       type: 'button',
-      'aria-label': 'Hide PromptAmp',
+      'aria-label': t('button.dismiss'),
       'aria-haspopup': 'menu',
     },
     children: [closeIcon()],
@@ -98,7 +99,13 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
 
   const wrap = el('div', {
     class: 'pa-button-wrap',
-    attrs: { 'data-state': 'ghost', 'data-entering': 'true' },
+    attrs: {
+      'data-state': 'ghost',
+      'data-entering': 'true',
+      // Re-declared per surface: the layer above is a physical coordinate
+      // frame and stays LTR, so each surface states its own reading direction.
+      dir: dirFor(),
+    },
     children: [button, dismiss, tooltip],
   });
 
@@ -209,7 +216,7 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
 
     menu = el('ul', {
       class: 'pa-menu',
-      attrs: { role: 'menu', 'aria-label': 'Hide PromptAmp' },
+      attrs: { role: 'menu', 'aria-label': t('button.dismiss') },
       children: [
         choice('Hide until next visit', 'session'),
         choice('Hide on this site', 'site'),

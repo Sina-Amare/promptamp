@@ -1,4 +1,5 @@
 import { browser, defineContentScript } from '#imports';
+import { setLocale } from '../lib/i18n';
 import { sendMessage } from '../lib/messaging/client';
 import { TRIGGER_ENHANCE } from '../lib/messaging/protocol';
 import { createButton, type ButtonHandle } from '../lib/ui/button';
@@ -268,6 +269,10 @@ interface Suppression {
 async function loadSuppression(): Promise<Suppression | null> {
   try {
     const settings = await sendMessage({ type: 'settings:get' });
+    // Set before anything is built. The button can appear within a frame of
+    // this resolving, and a label rendered in the wrong locale then corrected
+    // is worse than one that was never wrong.
+    setLocale(settings.uiLanguage);
     if (settings.globallyHidden) return { suppressed: true, corner: null };
     // A one-hour pause for screen shares (UX-SPEC §1.5).
     if (settings.pausedUntil && settings.pausedUntil > Date.now()) {

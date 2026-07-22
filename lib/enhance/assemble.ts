@@ -111,21 +111,34 @@ export function buildUserTurn(draft: string, adjust?: string): string {
   return `<draft>\n${safe}\n</draft>${adjustLine}`;
 }
 
-/** Preset chips from the Adjust row (UX-SPEC §2.2). */
+/**
+ * Preset chips from the Adjust row (UX-SPEC §2.2).
+ *
+ * The label is a message key, not text: the chip is translated, but the
+ * `instruction` is sent to the model and deliberately stays in English —
+ * every built-in system prompt is written in English, and mixing a Persian
+ * instruction into an English prompt is exactly the language drift the
+ * profiles work to avoid.
+ */
 export const ADJUST_PRESETS: readonly {
   id: string;
-  label: string;
+  labelKey:
+    'panel.adjustShorter' | 'panel.adjustLonger' | 'panel.adjustSpecific';
   instruction: string;
 }[] = Object.freeze([
-  { id: 'shorter', label: 'Shorter', instruction: 'Make it shorter.' },
+  {
+    id: 'shorter',
+    labelKey: 'panel.adjustShorter',
+    instruction: 'Make it shorter.',
+  },
   {
     id: 'longer',
-    label: 'Longer',
+    labelKey: 'panel.adjustLonger',
     instruction: 'Add more useful detail, without inventing facts.',
   },
   {
     id: 'specific',
-    label: 'More specific',
+    labelKey: 'panel.adjustSpecific',
     instruction: 'Make it more specific and concrete.',
   },
 ]);

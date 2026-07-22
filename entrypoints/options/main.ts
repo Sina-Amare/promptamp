@@ -1,4 +1,10 @@
 import { BUILTIN_PROFILES } from '../../lib/enhance/prompts';
+import {
+  applyLocaleToDocument,
+  type MessageKey,
+  setLocale,
+  t,
+} from '../../lib/i18n';
 import { sendMessage } from '../../lib/messaging/client';
 import { missingPermissions, requestPermission } from '../../lib/permissions';
 import type { ConfiguredConnection } from '../../lib/messaging/protocol';
@@ -27,12 +33,12 @@ import { el } from '../../lib/ui/host';
 
 type TabId = 'providers' | 'profiles' | 'behavior' | 'history' | 'about';
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'providers', label: 'Providers' },
-  { id: 'profiles', label: 'Profiles' },
-  { id: 'behavior', label: 'Behavior' },
-  { id: 'history', label: 'History' },
-  { id: 'about', label: 'About' },
+const TABS: { id: TabId; key: MessageKey }[] = [
+  { id: 'providers', key: 'tab.providers' },
+  { id: 'profiles', key: 'tab.profiles' },
+  { id: 'behavior', key: 'tab.behavior' },
+  { id: 'history', key: 'tab.history' },
+  { id: 'about', key: 'tab.about' },
 ];
 
 const tabBar = document.getElementById('tabs')!;
@@ -55,7 +61,7 @@ function renderTabs(): void {
   tabBar.replaceChildren(
     ...TABS.map((tab) => {
       const button = el('button', {
-        text: tab.label,
+        text: t(tab.key),
         attrs: {
           type: 'button',
           role: 'tab',
@@ -73,7 +79,7 @@ function renderTabs(): void {
 }
 
 async function renderPanel(): Promise<void> {
-  panel.replaceChildren(el('p', { class: 'empty', text: 'Loading…' }));
+  panel.replaceChildren(el('p', { class: 'empty', text: t('common.loading') }));
   switch (active) {
     case 'providers':
       panel.replaceChildren(await providersTab());
@@ -180,7 +186,7 @@ function permissionCard(id: ProviderId, baseUrl?: string): HTMLElement {
 
   const grant = el('button', {
     class: 'primary',
-    text: `Allow access to ${host}`,
+    text: t('conn.permissionGrant', { host }),
     attrs: { type: 'button' },
   });
   // Must be a real click: Firefox rejects a permission request that did not
@@ -197,11 +203,11 @@ function permissionCard(id: ProviderId, baseUrl?: string): HTMLElement {
     children: [
       el('span', {
         class: 'card-title',
-        text: `${config.label} needs your permission`,
+        text: t('conn.permissionTitle', { provider: config.label }),
       }),
       el('p', {
         class: 'notice',
-        text: `Your browser has not yet allowed PromptAmp to reach ${host}. Until you allow it, requests will fail even though your key is correct.`,
+        text: t('conn.permissionBody', { host }),
       }),
       grant,
     ],
@@ -232,7 +238,7 @@ function chainSummary(connections: ConfiguredConnection[]): HTMLElement {
   return el('section', {
     class: 'card',
     children: [
-      el('span', { class: 'card-title', text: 'Connections' }),
+      el('span', { class: 'card-title', text: t('conn.heading') }),
       el('p', {
         class: 'hint',
         text:
@@ -304,12 +310,12 @@ function connectionCard(
 
   const save = el('button', {
     class: 'primary',
-    text: 'Save',
+    text: t('common.save'),
     attrs: { type: 'button' },
   });
   save.addEventListener('click', () => {
     void (async () => {
-      setStatus('Saving…', '');
+      setStatus(t('common.saving'), '');
 
       // A user-supplied host is not covered by the manifest, so ask for it
       // here — inside the click, which is the only place Firefox allows it.
@@ -319,10 +325,7 @@ function connectionCard(
           baseUrlInput.value.trim(),
         );
         if (!granted) {
-          setStatus(
-            'Saved, but your browser declined access to that host — requests will fail until you allow it.',
-            'err',
-          );
+          setStatus(t('conn.permissionDenied'), 'err');
         }
       }
 
@@ -343,26 +346,26 @@ function connectionCard(
       keyInput.value = '';
       // Survives the rebuild below, which is what actually shows the user
       // their key was stored.
-      flash = { cardTitle: connection.id, text: 'Saved', kind: 'ok' };
+      flash = { cardTitle: connection.id, text: t('common.saved'), kind: 'ok' };
       await renderPanel();
     })();
   });
 
   const test = el('button', {
     class: 'secondary',
-    text: 'Test',
+    text: t('common.test'),
     attrs: { type: 'button' },
   });
   test.addEventListener('click', () => {
     void (async () => {
-      setStatus('Testing…', '');
+      setStatus(t('common.testing'), '');
       const result = await sendMessage({
         type: 'connection:test',
         connectionId: connection.id,
       });
       setStatus(
         result.ok
-          ? `Working — ${result.model ?? 'ready'}`
+          ? t('conn.working', { model: result.model ?? '' })
           : [result.error?.message, result.error?.remedy]
               .filter(Boolean)
               .join(' '),
@@ -373,12 +376,12 @@ function connectionCard(
 
   const fetchModels = el('button', {
     class: 'quiet',
-    text: 'Load models',
+    text: t('conn.loadModels'),
     attrs: { type: 'button' },
   });
   fetchModels.addEventListener('click', () => {
     void (async () => {
-      setStatus('Loading models…', '');
+      setStatus(t('conn.loadModels'), '');
       const models = await sendMessage({
         type: 'connection:models',
         connectionId: connection.id,
@@ -388,8 +391,8 @@ function connectionCard(
       );
       setStatus(
         models.length
-          ? `${String(models.length)} models available`
-          : 'No models returned',
+          ? t('conn.modelsFound', { n: models.length })
+          : t('conn.modelsNone'),
         models.length ? 'ok' : 'err',
       );
     })();
@@ -397,7 +400,7 @@ function connectionCard(
 
   const remove = el('button', {
     class: 'danger',
-    text: 'Remove',
+    text: t('common.remove'),
     attrs: { type: 'button' },
   });
   remove.addEventListener('click', () => {
@@ -424,10 +427,13 @@ function connectionCard(
           el('span', { class: 'card-title', text: connection.label }),
           el('span', {
             class: index === 0 ? 'badge' : 'badge muted',
-            text: index === 0 ? 'Primary' : `Fallback ${String(index)}`,
+            text:
+              index === 0
+                ? t('conn.primary')
+                : t('conn.fallback', { n: index }),
           }),
           connection.authMethod === 'oauth'
-            ? el('span', { class: 'badge muted', text: 'Connected' })
+            ? el('span', { class: 'badge muted', text: t('conn.connected') })
             : null,
           reorderControls(connection, index, all),
         ],
@@ -440,18 +446,20 @@ function connectionCard(
           })
         : null,
       el('label', {
-        children: [el('span', { text: 'Name' }), labelInput],
+        children: [el('span', { text: t('common.name') }), labelInput],
       }),
       config.requiresKey || config.keyOptional
         ? el('label', {
             children: [
               el('span', {
-                text: config.requiresKey ? 'API key' : 'API key (if required)',
+                text: config.requiresKey
+                  ? t('conn.apiKey')
+                  : t('conn.apiKeyOptional'),
               }),
               keyInput,
               el('span', {
                 class: 'hint',
-                text: 'Stored on this device only, readable only by the background worker.',
+                text: t('conn.keyStorage'),
               }),
             ],
           })
@@ -460,11 +468,18 @@ function connectionCard(
         class: 'row',
         children: [
           el('label', {
-            children: [el('span', { text: 'Model' }), modelInput, modelList],
+            children: [
+              el('span', { text: t('common.model') }),
+              modelInput,
+              modelList,
+            ],
           }),
           config.allowsCustomBaseUrl
             ? el('label', {
-                children: [el('span', { text: 'Server URL' }), baseUrlInput],
+                children: [
+                  el('span', { text: t('conn.serverUrl') }),
+                  baseUrlInput,
+                ],
               })
             : null,
         ],
@@ -515,8 +530,8 @@ function reorderControls(
     text: '↑',
     attrs: {
       type: 'button',
-      title: 'Use earlier',
-      'aria-label': `Move ${connection.label} earlier in the fallback order`,
+      title: t('conn.moveEarlier', { name: connection.label }),
+      'aria-label': t('conn.moveEarlier', { name: connection.label }),
     },
   });
   up.disabled = index === 0;
@@ -529,8 +544,8 @@ function reorderControls(
     text: '↓',
     attrs: {
       type: 'button',
-      title: 'Use later',
-      'aria-label': `Move ${connection.label} later in the fallback order`,
+      title: t('conn.moveLater', { name: connection.label }),
+      'aria-label': t('conn.moveLater', { name: connection.label }),
     },
   });
   down.disabled = index === all.length - 1;
@@ -543,7 +558,7 @@ function reorderControls(
 
 function addConnectionCard(existing: ConfiguredConnection[]): HTMLElement {
   const picker = el('select', {
-    attrs: { 'aria-label': 'Provider for the new connection' },
+    attrs: { 'aria-label': t('conn.addProvider') },
   });
   for (const id of USER_FACING_PROVIDERS) {
     picker.append(
@@ -553,7 +568,7 @@ function addConnectionCard(existing: ConfiguredConnection[]): HTMLElement {
 
   const add = el('button', {
     class: 'primary',
-    text: 'Add connection',
+    text: t('conn.addButton'),
     attrs: { type: 'button' },
   });
   add.addEventListener('click', () => {
@@ -582,20 +597,20 @@ function addConnectionCard(existing: ConfiguredConnection[]): HTMLElement {
 
   const connect = el('button', {
     class: 'secondary',
-    text: 'Connect with OpenRouter',
+    text: t('conn.oauthButton'),
     attrs: { type: 'button' },
   });
   const connectStatus = el('p', { class: 'status' });
   connect.addEventListener('click', () => {
     void (async () => {
-      connectStatus.textContent = 'Opening OpenRouter…';
+      connectStatus.textContent = t('conn.oauthOpening');
       connectStatus.className = 'status';
       const result = await sendMessage({
         type: 'connection:connectOpenRouter',
       });
       connectStatus.textContent = result.ok
-        ? 'Connected'
-        : (result.error?.message ?? 'Failed');
+        ? t('conn.oauthDone')
+        : (result.error?.message ?? t('common.failed'));
       connectStatus.className = `status ${result.ok ? 'ok' : 'err'}`;
       if (result.ok) await renderPanel();
     })();
@@ -604,15 +619,15 @@ function addConnectionCard(existing: ConfiguredConnection[]): HTMLElement {
   return el('section', {
     class: 'card',
     children: [
-      el('span', { class: 'card-title', text: 'Add a connection' }),
+      el('span', { class: 'card-title', text: t('conn.add') }),
       el('p', {
         class: 'hint',
-        text: 'Each connection is one key and one model. Add as many as you like — they run in the order above.',
+        text: t('conn.addHint'),
       }),
       el('div', { class: 'row', children: [picker, add] }),
       el('p', {
         class: 'hint',
-        text: 'Or sign in to OpenRouter without pasting a key:',
+        text: t('conn.oauthHint'),
       }),
       el('div', { class: 'row', children: [connect] }),
       connectStatus,
@@ -628,12 +643,12 @@ async function profilesTab(): Promise<HTMLElement> {
   const status = el('p', { class: 'status' });
 
   const importArea = el('textarea', {
-    attrs: { placeholder: 'Paste an exported profiles JSON here…' },
+    attrs: { placeholder: t('profiles.importPlaceholder') },
   });
 
   const importBtn = el('button', {
     class: 'secondary',
-    text: 'Import',
+    text: t('profiles.import'),
     attrs: { type: 'button' },
   });
   importBtn.addEventListener('click', () => {
@@ -653,7 +668,7 @@ async function profilesTab(): Promise<HTMLElement> {
         importArea.value = '';
         await renderPanel();
       } catch {
-        status.textContent = 'That is not valid JSON.';
+        status.textContent = t('profiles.importBadJson');
         status.className = 'status err';
       }
     })();
@@ -661,7 +676,7 @@ async function profilesTab(): Promise<HTMLElement> {
 
   const exportBtn = el('button', {
     class: 'quiet',
-    text: 'Export custom profiles',
+    text: t('profiles.export'),
     attrs: { type: 'button' },
   });
   exportBtn.addEventListener('click', () => {
@@ -677,10 +692,10 @@ async function profilesTab(): Promise<HTMLElement> {
       el('section', {
         class: 'card',
         children: [
-          el('span', { class: 'card-title', text: 'Built-in profiles' }),
+          el('span', { class: 'card-title', text: t('profiles.builtin') }),
           el('p', {
             class: 'hint',
-            text: 'Improved with each update, so they are read-only. Fork one to customise it.',
+            text: t('profiles.builtinHint'),
           }),
           el('div', {
             class: 'list',
@@ -693,9 +708,9 @@ async function profilesTab(): Promise<HTMLElement> {
       el('section', {
         class: 'card',
         children: [
-          el('span', { class: 'card-title', text: 'Your profiles' }),
+          el('span', { class: 'card-title', text: t('profiles.mine') }),
           custom.length === 0
-            ? el('p', { class: 'empty', text: 'No custom profiles yet.' })
+            ? el('p', { class: 'empty', text: t('profiles.empty') })
             : el('div', {
                 class: 'list',
                 children: custom.map((profile) => customRow(profile)),
@@ -705,7 +720,7 @@ async function profilesTab(): Promise<HTMLElement> {
       el('section', {
         class: 'card',
         children: [
-          el('span', { class: 'card-title', text: 'Import / export' }),
+          el('span', { class: 'card-title', text: t('profiles.transfer') }),
           importArea,
           el('div', { class: 'row', children: [importBtn, exportBtn] }),
           status,
@@ -718,7 +733,7 @@ async function profilesTab(): Promise<HTMLElement> {
 function builtinRow(profile: Profile, custom: Profile[]): HTMLElement {
   const fork = el('button', {
     class: 'secondary',
-    text: 'Fork',
+    text: t('profiles.fork'),
     attrs: { type: 'button' },
   });
   fork.addEventListener('click', () => {
@@ -755,12 +770,12 @@ function builtinRow(profile: Profile, custom: Profile[]): HTMLElement {
 function customRow(profile: Profile): HTMLElement {
   const edit = el('button', {
     class: 'secondary',
-    text: 'Edit',
+    text: t('common.edit'),
     attrs: { type: 'button' },
   });
   const remove = el('button', {
     class: 'danger',
-    text: 'Delete',
+    text: t('common.delete'),
     attrs: { type: 'button' },
   });
 
@@ -794,7 +809,7 @@ function profileEditor(profile: Profile): HTMLElement {
 
   const save = el('button', {
     class: 'primary',
-    text: 'Save',
+    text: t('common.save'),
     attrs: { type: 'button' },
   });
   save.addEventListener('click', () => {
@@ -812,8 +827,7 @@ function profileEditor(profile: Profile): HTMLElement {
         });
         await renderPanel();
       } catch {
-        status.textContent =
-          'Could not save — check the name and prompt length.';
+        status.textContent = t('profiles.saveFailed');
         status.className = 'status err';
       }
     })();
@@ -821,7 +835,7 @@ function profileEditor(profile: Profile): HTMLElement {
 
   const back = el('button', {
     class: 'quiet',
-    text: 'Back',
+    text: t('common.back'),
     attrs: { type: 'button' },
   });
   back.addEventListener('click', () => {
@@ -834,10 +848,13 @@ function profileEditor(profile: Profile): HTMLElement {
       el('span', { class: 'card-title', text: `Edit ${profile.name}` }),
       el('label', { children: [el('span', { text: 'Name' }), name] }),
       el('label', {
-        children: [el('span', { text: 'Description' }), description],
+        children: [
+          el('span', { text: t('profiles.description') }),
+          description,
+        ],
       }),
       el('label', {
-        children: [el('span', { text: 'System prompt' }), prompt],
+        children: [el('span', { text: t('profiles.systemPrompt') }), prompt],
       }),
       el('div', { class: 'row', children: [save, back] }),
       status,
@@ -853,19 +870,19 @@ async function behaviorTab(): Promise<HTMLElement> {
   const profiles = await sendMessage({ type: 'profiles:list' });
 
   const autoProfile = checkbox(
-    'Pick a profile automatically from the site',
+    t('behavior.autoProfile'),
     settings.autoProfile,
     (checked) => ({ autoProfile: checked }),
   );
 
   const globallyHidden = checkbox(
-    'Hide PromptAmp everywhere',
+    t('behavior.hideEverywhere'),
     settings.globallyHidden,
     (checked) => ({ globallyHidden: checked }),
   );
 
   const historyEnabled = checkbox(
-    'Keep a local history of enhancements',
+    t('behavior.keepHistory'),
     settings.historyEnabled,
     (checked) => ({ historyEnabled: checked }),
   );
@@ -894,7 +911,7 @@ async function behaviorTab(): Promise<HTMLElement> {
       list: 'pa-output-languages',
       spellcheck: 'false',
       maxlength: '40',
-      placeholder: 'Same language as my draft',
+      placeholder: t('behavior.outputLanguagePlaceholder'),
     },
   });
   outputLanguage.value = settings.outputLanguageOverride;
@@ -903,6 +920,33 @@ async function behaviorTab(): Promise<HTMLElement> {
       type: 'settings:patch',
       patch: { outputLanguageOverride: outputLanguage.value.trim() },
     });
+  });
+
+  // Independent of the browser's locale on purpose: a Persian speaker on an
+  // English browser is exactly the person this setting exists for.
+  const uiLanguage = el('select');
+  for (const [value, label] of [
+    ['auto', t('behavior.uiLanguageAuto')],
+    ['en', 'English'],
+    ['fa', 'فارسی'],
+  ] as const) {
+    const option = el('option', { text: label, attrs: { value } });
+    if (settings.uiLanguage === value) option.selected = true;
+    uiLanguage.append(option);
+  }
+  uiLanguage.addEventListener('change', () => {
+    void (async () => {
+      await sendMessage({
+        type: 'settings:patch',
+        patch: { uiLanguage: uiLanguage.value as 'auto' | 'en' | 'fa' },
+      });
+      // Re-render immediately: a language setting that needs a reload to take
+      // effect makes the user doubt it worked.
+      setLocale(uiLanguage.value as 'auto' | 'en' | 'fa');
+      applyLocaleToDocument();
+      renderTabs();
+      await renderPanel();
+    })();
   });
 
   const languageList = el('datalist', {
@@ -931,14 +975,23 @@ async function behaviorTab(): Promise<HTMLElement> {
       el('section', {
         class: 'card',
         children: [
-          el('span', { class: 'card-title', text: 'General' }),
+          el('span', { class: 'card-title', text: t('behavior.general') }),
           autoProfile,
           el('label', {
-            children: [el('span', { text: 'Default profile' }), defaultProfile],
+            children: [
+              el('span', { text: t('behavior.defaultProfile') }),
+              defaultProfile,
+            ],
           }),
           el('label', {
             children: [
-              el('span', { text: 'Enhanced prompt language' }),
+              el('span', { text: t('behavior.uiLanguage') }),
+              uiLanguage,
+            ],
+          }),
+          el('label', {
+            children: [
+              el('span', { text: t('behavior.outputLanguage') }),
               outputLanguage,
               languageList,
               el('span', {
@@ -953,14 +1006,14 @@ async function behaviorTab(): Promise<HTMLElement> {
       el('section', {
         class: 'card',
         children: [
-          el('span', { class: 'card-title', text: 'Limits' }),
+          el('span', { class: 'card-title', text: t('behavior.limits') }),
           el('label', {
             children: [
-              el('span', { text: 'Daily enhancement limit' }),
+              el('span', { text: t('behavior.dailyLimit') }),
               softCap,
               el('span', {
                 class: 'hint',
-                text: 'A guard against runaway usage on your own key. 0 turns it off.',
+                text: t('behavior.dailyLimitHint'),
               }),
             ],
           }),
@@ -970,11 +1023,11 @@ async function behaviorTab(): Promise<HTMLElement> {
       el('section', {
         class: 'card',
         children: [
-          el('span', { class: 'card-title', text: 'Hidden sites' }),
+          el('span', { class: 'card-title', text: t('behavior.hiddenSites') }),
           hiddenOrigins.length === 0
             ? el('p', {
                 class: 'empty',
-                text: 'PromptAmp is not hidden anywhere.',
+                text: t('behavior.hiddenNone'),
               })
             : el('div', {
                 class: 'list',
@@ -985,10 +1038,10 @@ async function behaviorTab(): Promise<HTMLElement> {
       el('section', {
         class: 'card',
         children: [
-          el('span', { class: 'card-title', text: 'Keyboard shortcut' }),
+          el('span', { class: 'card-title', text: t('behavior.shortcut') }),
           el('p', {
             class: 'hint',
-            text: 'Alt+E enhances the focused field. Change it at chrome://extensions/shortcuts.',
+            text: t('behavior.shortcutHint'),
           }),
         ],
       }),
@@ -999,7 +1052,7 @@ async function behaviorTab(): Promise<HTMLElement> {
 function hiddenRow(origin: string): HTMLElement {
   const restore = el('button', {
     class: 'secondary',
-    text: 'Show again',
+    text: t('behavior.showAgain'),
     attrs: { type: 'button' },
   });
   restore.addEventListener('click', () => {
@@ -1043,7 +1096,7 @@ async function historyTab(): Promise<HTMLElement> {
   const entries = await sendMessage({ type: 'history:list' });
 
   const search = el('input', {
-    attrs: { type: 'text', placeholder: 'Search your history…' },
+    attrs: { type: 'text', placeholder: t('history.search') },
   });
   const list = el('div', { class: 'stack' });
 
@@ -1059,7 +1112,7 @@ async function historyTab(): Promise<HTMLElement> {
 
     list.replaceChildren(
       ...(matching.length === 0
-        ? [el('p', { class: 'empty', text: 'Nothing here yet.' })]
+        ? [el('p', { class: 'empty', text: t('history.empty') })]
         : matching.map(historyEntry)),
     );
   };
@@ -1071,7 +1124,7 @@ async function historyTab(): Promise<HTMLElement> {
 
   const exportBtn = el('button', {
     class: 'secondary',
-    text: 'Export',
+    text: t('history.export'),
     attrs: { type: 'button' },
   });
   exportBtn.addEventListener('click', () => {
@@ -1085,7 +1138,7 @@ async function historyTab(): Promise<HTMLElement> {
 
   const clear = el('button', {
     class: 'danger',
-    text: 'Clear history',
+    text: t('history.clear'),
     attrs: { type: 'button' },
   });
   clear.addEventListener('click', () => {
@@ -1103,7 +1156,7 @@ async function historyTab(): Promise<HTMLElement> {
         children: [
           el('p', {
             class: 'hint',
-            text: 'History lives on this device only. It is never uploaded anywhere.',
+            text: t('history.local'),
           }),
           search,
           el('div', { class: 'row', children: [exportBtn, clear] }),
@@ -1155,7 +1208,7 @@ function aboutTab(): HTMLElement {
       el('section', {
         class: 'card',
         children: [
-          el('span', { class: 'card-title', text: 'Privacy' }),
+          el('span', { class: 'card-title', text: t('about.privacy') }),
           el('p', {
             class: 'hint',
             text: 'PromptAmp has no servers. Your drafts go directly from your browser to the provider you chose, using your key. Nothing is collected, and there is no analytics of any kind.',
@@ -1173,7 +1226,7 @@ function aboutTab(): HTMLElement {
       el('section', {
         class: 'card',
         children: [
-          el('span', { class: 'card-title', text: 'Open source' }),
+          el('span', { class: 'card-title', text: t('about.openSource') }),
           el('p', {
             class: 'hint',
             children: [
@@ -1206,5 +1259,16 @@ function download(filename: string, contents: string): void {
   URL.revokeObjectURL(url);
 }
 
-renderTabs();
-void renderPanel();
+/**
+ * Locale first, then chrome. Building the tab bar before the catalogue is
+ * selected would render every label in English and then swap it, which reads
+ * as a bug even when it lasts one frame.
+ */
+void (async () => {
+  const settings = await sendMessage({ type: 'settings:get' });
+  setLocale(settings.uiLanguage);
+  applyLocaleToDocument();
+
+  renderTabs();
+  await renderPanel();
+})();

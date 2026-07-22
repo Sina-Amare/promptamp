@@ -34,6 +34,18 @@ export const BUTTON_CSS = `
   overflow: visible;
   /* The layer is a positioning frame only — clicks pass through to the page. */
   pointer-events: none;
+  /*
+   * A coordinate space, not text. Every surface inside is placed with a
+   * translate3d of viewport coordinates taken from getBoundingClientRect, and
+   * those are physical pixels from the left edge. Letting this box inherit
+   * an rtl direction from the host moves each child's static origin to the
+   * *right* edge, so the same translate puts the button a full viewport width
+   * off-screen — which is exactly what happened the first time a Persian
+   * interface met a real page.
+   *
+   * The surfaces re-declare their own direction; this frame stays physical.
+   */
+  direction: ltr;
 }
 
 /* The UA hides an unshown popover; ours is shown for the life of the script. */
