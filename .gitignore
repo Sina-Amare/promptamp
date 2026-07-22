@@ -50,3 +50,6 @@ scratchpad/
 BLUEPRINT.md
 PROGRESS.md
 docs/
+
+# Regenerated on demand with `pnpm shots` — binary churn on every UI tweak.
+store/screenshots/

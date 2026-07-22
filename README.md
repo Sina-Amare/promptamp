@@ -59,7 +59,7 @@ pnpm build
 *Load unpacked*, and select `.output/chrome-mv3`.
 
 **Firefox** — visit `about:debugging#/runtime/this-firefox`, choose *Load
-Temporary Add-on*, and select any file inside `.output/firefox-mv2`.
+Temporary Add-on*, and select any file inside `.output/firefox-mv3`.
 
 Then open the extension's settings and add a connection.
 

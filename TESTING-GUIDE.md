@@ -4,7 +4,7 @@ A guided pass, about 20 minutes. It is ordered so that anything broken shows up
 early, and so you never have to guess whether something is a bug or the design.
 
 Automated tests already cover the pipeline, the insertion ladder, the fallback
-chain, and accessibility — 270 unit tests and 74 end-to-end tests against a real
+chain, and accessibility — 270 unit tests and 79 end-to-end tests against a real
 loaded extension. What they *cannot* cover is a real logged-in site with a real
 model behind a real key. That is what this pass is for.
 
@@ -21,14 +21,16 @@ pnpm build
 ```
 
 **Chrome or Edge**
+
 1. Open `chrome://extensions`
 2. Turn on **Developer mode** (top right)
 3. **Load unpacked** → select `.output/chrome-mv3`
 4. Pin PromptAmp to the toolbar
 
 **Firefox**
+
 1. Open `about:debugging#/runtime/this-firefox`
-2. **Load Temporary Add-on** → select any file inside `.output/firefox-mv2`
+2. **Load Temporary Add-on** → select any file inside `.output/firefox-mv3`
 3. Firefox will ask for host permission the first time a request is made — that
    is expected and is the point of the permission card in settings
 
@@ -181,6 +183,7 @@ where that feedback is cheapest to act on.
 
 - The profile chip in the panel header is not clickable yet; switch profiles
   from the toolbar popup or settings
-- Store screenshots and the demo GIF are not made yet
+- The icon is a hand-drawn placeholder — final artwork is still to come
+- No demo GIF yet
 - Not yet submitted to any store, so installs are unpacked/temporary — Firefox
   in particular discards a temporary add-on when it restarts
