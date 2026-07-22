@@ -3,6 +3,8 @@ import { sendMessage } from '../lib/messaging/client';
 import { createButton, type ButtonHandle } from '../lib/ui/button';
 import { BUTTON_CSS } from '../lib/ui/button/styles';
 import { createShadowHost, el } from '../lib/ui/host';
+import { PANEL_CSS } from '../lib/ui/panel/styles';
+import { createSession, type EnhanceSession } from '../lib/ui/session';
 import { createFieldTracker } from '../lib/ui/tracker';
 import type { ButtonCorner } from '../lib/storage/schemas';
 
@@ -41,27 +43,60 @@ export default defineContentScript({
     });
 
     const sheet = new CSSStyleSheet();
-    sheet.replaceSync(BUTTON_CSS);
+    sheet.replaceSync(`${BUTTON_CSS}\n${PANEL_CSS}`);
     host.root.adoptedStyleSheets = [...host.root.adoptedStyleSheets, sheet];
 
     const layer = el('div', { class: 'pa-button-layer' });
     host.root.append(layer);
 
     let button: ButtonHandle | null = null;
+    let session: EnhanceSession | null = null;
     let currentCorner: ButtonCorner | null = null;
+
+    /**
+     * Tier 4 needs the page's own JavaScript world, which a content script
+     * cannot reach — so it is asked for via the worker's scripting API.
+     */
+    const mainWorldInsert = async (text: string): Promise<boolean> => {
+      try {
+        return await sendMessage({
+          type: 'insert:mainWorld',
+          text,
+        });
+      } catch {
+        return false;
+      }
+    };
+
+    function beginEnhance(field: HTMLElement): void {
+      session?.close();
+      session = createSession(
+        { field, layer, origin: location.origin, mainWorldInsert },
+        {
+          onStateChange: (state) => {
+            if (state === 'loading') button?.setState('loading');
+            else if (state === 'error') button?.setState('error');
+            else if (state === 'done') button?.setState('done');
+            else button?.setState('idle');
+          },
+          onClosed: () => {
+            session = null;
+            if (button?.getState() === 'loading') button.setState('idle');
+          },
+        },
+      );
+      session.start();
+    }
 
     const tracker = createFieldTracker(
       {
-        onAttach: () => {
+        onAttach: (field) => {
           button?.destroy();
           button = createButton({
             onActivate: () => {
-              // Phase 6 replaces this with the preview panel. Nothing may
-              // touch the draft before an explicit Accept, so there is
-              // deliberately no insertion path wired here yet.
-              button?.setState('loading');
+              beginEnhance(field.element);
             },
-            onStop: () => button?.setState('idle'),
+            onStop: () => session?.stop(),
             onDismiss: (choice) => {
               void handleDismiss(choice);
             },
@@ -128,6 +163,10 @@ export default defineContentScript({
     }
 
     function teardown(): void {
+      // Close the session first: it holds an open Port, and dropping the host
+      // without disconnecting would leave a request billing in the worker.
+      session?.close();
+      session = null;
       tracker.stop();
       button?.destroy();
       button = null;

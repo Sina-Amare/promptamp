@@ -1,6 +1,14 @@
 import { browser, defineBackground } from '#imports';
 import { listProfiles, resolveProfile } from '../lib/enhance/resolve';
-import { isTrustedSender, type Request } from '../lib/messaging/protocol';
+import { runEnhancement, toSafeError } from '../lib/enhance/run';
+import { mainWorldInsertFunction } from '../lib/insertion/main-world';
+import {
+  ENHANCE_PORT,
+  isTrustedSender,
+  type EnhanceClientMessage,
+  type EnhanceServerMessage,
+  type Request,
+} from '../lib/messaging/protocol';
 import { testProvider } from '../lib/providers';
 import {
   getHistory,
@@ -24,6 +32,63 @@ import {
  */
 
 export default defineBackground(() => {
+  /**
+   * The enhance channel.
+   *
+   * A Port rather than a one-shot message, for one reason: cancellation. The
+   * Stop button disconnects the port, which aborts the in-flight fetch — a
+   * `sendMessage` call would keep running and keep billing after the user had
+   * visibly cancelled it.
+   */
+  browser.runtime.onConnect.addListener((port) => {
+    if (port.name !== ENHANCE_PORT) return;
+    if (!isTrustedSender(port.sender ?? {})) {
+      port.disconnect();
+      return;
+    }
+
+    const controller = new AbortController();
+    let finished = false;
+
+    const post = (message: EnhanceServerMessage): void => {
+      try {
+        port.postMessage(message);
+      } catch {
+        // The panel closed mid-flight; nothing to deliver to.
+      }
+    };
+
+    port.onDisconnect.addListener(() => {
+      if (!finished) controller.abort();
+    });
+
+    port.onMessage.addListener((raw: unknown) => {
+      const message = raw as EnhanceClientMessage;
+      if (message.type === 'cancel') {
+        controller.abort();
+        return;
+      }
+      if (message.type !== 'start') return;
+
+      runEnhancement(message, {
+        signal: controller.signal,
+        onAccepted: (profileId, auto) => {
+          post({ type: 'accepted', profileId, auto });
+        },
+      })
+        .then((result) => {
+          finished = true;
+          post({ type: 'done', result });
+        })
+        .catch((error: unknown) => {
+          finished = true;
+          // Every failure is mapped and redacted before it crosses back — a
+          // raw provider message can echo the API key.
+          post({ type: 'error', error: toSafeError(error) });
+        });
+    });
+  });
+
   browser.runtime.onMessage.addListener(
     (message: unknown, sender, sendResponse: (value: unknown) => void) => {
       // Principle 3. There is no `externally_connectable`, so a web page cannot
@@ -32,10 +97,13 @@ export default defineBackground(() => {
       if (!isTrustedSender(sender)) return false;
       if (!isRequest(message)) return false;
 
-      handle(message).then(sendResponse, (error: unknown) => {
-        console.error('[promptamp]', error);
-        sendResponse(undefined);
-      });
+      handle(message, sender.tab?.id, sender.frameId).then(
+        sendResponse,
+        (error: unknown) => {
+          console.error('[promptamp]', error);
+          sendResponse(undefined);
+        },
+      );
 
       // Keeps the message channel open for the async handler above.
       return true;
@@ -52,8 +120,15 @@ function isRequest(value: unknown): value is Request {
   );
 }
 
-async function handle(message: Request): Promise<unknown> {
+async function handle(
+  message: Request,
+  tabId: number | undefined,
+  frameId: number | undefined,
+): Promise<unknown> {
   switch (message.type) {
+    case 'insert:mainWorld':
+      return insertInMainWorld(message.text, tabId, frameId);
+
     case 'settings:get':
       return getSettings();
 
@@ -96,5 +171,37 @@ async function handle(message: Request): Promise<unknown> {
       const hidden = (await sessionHiddenOriginsItem.getValue()) ?? [];
       return hidden.includes(message.origin);
     }
+  }
+}
+
+/**
+ * Runs the tier-4 adapter in the page's own JavaScript world.
+ *
+ * `world: 'MAIN'` is the only way to touch a Monaco or CodeMirror instance
+ * API, and only the worker can request it — a content script is permanently
+ * isolated. `activeTab` covers the permission, so this never widens what the
+ * extension can reach.
+ */
+async function insertInMainWorld(
+  text: string,
+  tabId: number | undefined,
+  frameId: number | undefined,
+): Promise<boolean> {
+  if (tabId === undefined) return false;
+  try {
+    const results = await browser.scripting.executeScript({
+      target: {
+        tabId,
+        ...(frameId === undefined ? {} : { frameIds: [frameId] }),
+      },
+      world: 'MAIN',
+      func: mainWorldInsertFunction,
+      args: [text],
+    });
+    return results.some((entry) => entry.result === true);
+  } catch {
+    // Injection refused (a restricted page, or the tab navigated away). The
+    // engine falls through to the next tier.
+    return false;
   }
 }
