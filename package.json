@@ -36,6 +36,7 @@
     "e2e": "wxt build && playwright test",
     "e2e:only": "playwright test",
     "postinstall": "wxt prepare",
+    "icons": "tsx scripts/icons.ts",
     "battery": "tsx scripts/battery.ts",
     "latency": "tsx scripts/latency.ts"
   },

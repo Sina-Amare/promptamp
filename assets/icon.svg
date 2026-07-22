@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="PromptAmp">
+  <!--
+    The amp dial. PromptAmp is an amplifier for a prompt, and a gain knob says
+    "turn this up" without a word — which matters, because an extension icon is
+    drawn at 16 px next to a dozen chat bubbles and sparkles.
+
+    Everything here is dictated by that 16 px:
+      - Two shapes, no more. Three becomes a smudge.
+      - Strokes are 13/128 ≈ 10% of the canvas, so they survive to ~1.6 px on a
+        non-retina toolbar. A hairline ring would vanish.
+      - The arc leaves a 90° gap at the bottom, which is what makes it read as a
+        *dial* rather than a generic circle.
+      - No gradients, no shadows, no text. All three turn to mud when downscaled.
+      - Indigo/amber clears 4.5:1 against both white and near-black, so the icon
+        stays visible in light and dark browser chrome alike.
+
+    Replace this with generated artwork whenever it exists; `pnpm icons`
+    regenerates every PNG size from whatever this file contains.
+  -->
+  <path
+    d="M35.72 92.28 A40 40 0 1 1 92.28 92.28"
+    fill="none"
+    stroke="#4338CA"
+    stroke-width="13"
+    stroke-linecap="round"
+  />
+  <path
+    d="M64 64 L82.38 45.62"
+    fill="none"
+    stroke="#F59E0B"
+    stroke-width="13"
+    stroke-linecap="round"
+  />
+</svg>

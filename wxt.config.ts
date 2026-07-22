@@ -30,6 +30,26 @@ export default defineConfig({
       'Turn rough drafts into engineered prompts with one tap, in any text field. Bring your own API key — no backend, no telemetry.',
     version: '0.1.0',
 
+    // Every size is emitted rather than left to the browser: Chrome scales
+    // 128 down to 16 badly enough that a thin arc turns to grey mush.
+    // Regenerate with `pnpm icons` after editing `assets/icon.svg`.
+    icons: {
+      16: 'icon/icon-16.png',
+      32: 'icon/icon-32.png',
+      48: 'icon/icon-48.png',
+      128: 'icon/icon-128.png',
+    },
+
+    action: {
+      default_title: 'PromptAmp',
+      default_icon: {
+        16: 'icon/icon-16.png',
+        32: 'icon/icon-32.png',
+        48: 'icon/icon-48.png',
+        128: 'icon/icon-128.png',
+      },
+    },
+
     permissions: [
       'storage',
       'activeTab',

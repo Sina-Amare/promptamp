@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy — PromptAmp</title>
+    <meta
+      name="description"
+      content="PromptAmp collects nothing. It has no servers, no telemetry, and no accounts."
+    />
+    <link rel="icon" href="../public/icon/icon-32.png" />
+    <style>
+      /*
+        Deliberately one file with no build step and no external requests. A
+        privacy policy that pulls in a font from a CDN is logging the IP of
+        everyone who reads it, which rather undercuts the point.
+      */
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #111827;
+        --muted: #4b5563;
+        --rule: #e5e7eb;
+        --accent: #4338ca;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b0f19;
+          --fg: #e5e7eb;
+          --muted: #9ca3af;
+          --rule: #1f2937;
+          --accent: #a5b4fc;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0 auto;
+        padding: 3rem 1.25rem 6rem;
+        max-width: 46rem;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          16px/1.65 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+      h1 {
+        margin: 0 0 0.25rem;
+        font-size: 1.9rem;
+        letter-spacing: -0.02em;
+      }
+      h2 {
+        margin: 2.5rem 0 0.5rem;
+        font-size: 1.15rem;
+        letter-spacing: -0.01em;
+      }
+      .updated {
+        margin: 0 0 2rem;
+        color: var(--muted);
+        font-size: 0.875rem;
+      }
+      .lede {
+        padding: 1rem 1.25rem;
+        border-inline-start: 3px solid var(--accent);
+        border-radius: 0 8px 8px 0;
+        background: color-mix(in srgb, var(--accent) 8%, transparent);
+        font-size: 1.05rem;
+      }
+      ul {
+        padding-inline-start: 1.25rem;
+      }
+      li {
+        margin: 0.4rem 0;
+      }
+      code {
+        padding: 0.1em 0.35em;
+        border-radius: 4px;
+        background: color-mix(in srgb, var(--fg) 8%, transparent);
+        font-size: 0.9em;
+      }
+      table {
+        margin: 1rem 0;
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+      }
+      th,
+      td {
+        padding: 0.6rem 0.5rem;
+        border-bottom: 1px solid var(--rule);
+        text-align: start;
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+      a {
+        color: var(--accent);
+      }
+      footer {
+        margin-top: 3rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--rule);
+        color: var(--muted);
+        font-size: 0.875rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>PromptAmp Privacy Policy</h1>
+    <p class="updated">Last updated 22 July 2026 · applies to version 0.1.0</p>
+
+    <p class="lede">
+      PromptAmp collects nothing. There is no PromptAmp server, no analytics, no
+      telemetry, and no account. Nothing you write is sent to us, because there
+      is no “us” to send it to.
+    </p>
+
+    <h2>What leaves your browser, and where it goes</h2>
+    <p>
+      Exactly one thing: when you press the Enhance button, the draft in that
+      field is sent to the AI provider <em>you</em> configured, authenticated
+      with the API key <em>you</em> supplied. It goes directly from your browser
+      to that provider. It does not pass through any intermediary.
+    </p>
+    <p>
+      No request is ever made without you pressing the button, the keyboard
+      shortcut, or the context-menu item.
+    </p>
+
+    <h2>What is stored, and where</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Where it lives</th>
+          <th>Who can read it</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Your API keys</td>
+          <td><code>storage.local</code>, on this device only</td>
+          <td>
+            The extension's background worker only — never the script that runs
+            on web pages
+          </td>
+        </tr>
+        <tr>
+          <td>Your settings and custom profiles</td>
+          <td><code>storage.local</code>, on this device only</td>
+          <td>The extension</td>
+        </tr>
+        <tr>
+          <td>Enhancement history, if you leave it on</td>
+          <td><code>storage.local</code>, on this device only</td>
+          <td>You. Clear or disable it any time in Settings → History</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Keys are stored in <code>storage.local</code> and never
+      <code>storage.sync</code>. Sync would replicate them through your browser
+      vendor's servers, which would break the promise above.
+    </p>
+
+    <h2>What we do not do</h2>
+    <ul>
+      <li>No analytics, metrics, crash reporting, or usage counting</li>
+      <li>No accounts, sign-up, licence check, or phone-home</li>
+      <li>No advertising, and no data sold, shared, or brokered</li>
+      <li>
+        No reading, storing, or transmitting page content you did not submit
+      </li>
+      <li>No requests to any host other than the provider you configured</li>
+    </ul>
+
+    <h2>Permissions, and why each exists</h2>
+    <table>
+      <tbody>
+        <tr>
+          <td><code>storage</code></td>
+          <td>To keep your key, settings, and profiles on this device</td>
+        </tr>
+        <tr>
+          <td><code>activeTab</code>, <code>scripting</code></td>
+          <td>
+            To insert the rewritten text into the field you are focused on. Some
+            editors (Monaco, CodeMirror) only accept text through their own API,
+            which requires running a small insertion function in the page
+          </td>
+        </tr>
+        <tr>
+          <td><code>contextMenus</code>, <code>commands</code></td>
+          <td>The right-click item and the Alt+E shortcut</td>
+        </tr>
+        <tr>
+          <td><code>identity</code></td>
+          <td>
+            Optional OpenRouter sign-in via PKCE, so you can connect without
+            pasting a key. PromptAmp never sees your password
+          </td>
+        </tr>
+        <tr>
+          <td>Host permissions</td>
+          <td>
+            A fixed, narrow list of provider API hosts. If you add a custom
+            OpenAI-compatible endpoint, your browser asks permission for that
+            one host at the moment you save it
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Your provider's policy still applies</h2>
+    <p>
+      PromptAmp sends your draft to the provider you chose, and what that
+      provider does with it is governed by <em>their</em> terms, not ours. This
+      matters most on free tiers: Google, for example, may use free-tier Gemini
+      API content to improve its models. PromptAmp states this in the settings
+      page before you paste a key, but the choice — and the policy — is between
+      you and them.
+    </p>
+
+    <h2>Children</h2>
+    <p>
+      PromptAmp is not directed at children under 13 and collects no personal
+      information from anyone, of any age.
+    </p>
+
+    <h2>Changes</h2>
+    <p>
+      If this policy ever changes, the new version appears here and in the
+      repository's history, where the diff is public and permanent.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      Questions or concerns:
+      <a href="https://github.com/Sina-Amare/promptamp/issues"
+        >open an issue on GitHub</a
+      >.
+    </p>
+
+    <footer>
+      PromptAmp is open source under the MIT licence. Every claim on this page
+      is checkable in the
+      <a href="https://github.com/Sina-Amare/promptamp">source</a>.
+    </footer>
+  </body>
+</html>
