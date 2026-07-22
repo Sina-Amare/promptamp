@@ -1,0 +1,46 @@
+# ── Dependencies & build output ─────────────────────────
+node_modules/
+.output/
+.wxt/
+dist/
+stats.html
+stats-*.json
+web-ext-artifacts/
+
+# ── Environment & secrets ───────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ── Logs & caches ───────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+.cache/
+.eslintcache
+*.tsbuildinfo
+
+# ── Editors & OS ────────────────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── AI-assistant & personal workspace files (local only) ─
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+AGENTS.md
+NOTES.md
+*.local.md
+scratch/
+scratchpad/
+
+# ── Private planning docs (not for publication) ─────────
+BLUEPRINT.md
+docs/UX-SPEC.md
+docs/SYSTEM-PROMPTS.md
