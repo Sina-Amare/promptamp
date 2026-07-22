@@ -78,6 +78,31 @@ export default tseslint.config(
     },
   },
 
+  // Principle 2: API keys are background-worker-only. A content script runs in
+  // a page the user did not write, so a key must never enter its heap. This is
+  // the mechanical enforcement of that rule — reviews forget, CI does not.
+  {
+    files: [
+      'entrypoints/content*.ts',
+      'entrypoints/content*/**/*.ts',
+      'lib/ui/**/*.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/storage/credentials', '**/providers/**'],
+              message:
+                'Content scripts must never import credentials or provider adapters. Go through the background worker via lib/messaging/protocol.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Plain-JS config files sit outside the TS project, so type-aware rules
   // have nothing to work with.
   {
