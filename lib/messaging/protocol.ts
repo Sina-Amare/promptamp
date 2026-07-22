@@ -68,7 +68,26 @@ export type Request =
    * from the page's JavaScript world — which only the worker can reach, via
    * `scripting.executeScript({ world: 'MAIN' })`.
    */
-  | { type: 'insert:mainWorld'; text: string };
+  | { type: 'insert:mainWorld'; text: string }
+  /* ---- options page ---- */
+  /** Metadata only — never returns key material. */
+  | { type: 'providers:list' }
+  | {
+      type: 'provider:save';
+      providerId: ProviderId;
+      apiKey?: string;
+      model: string;
+      baseUrl?: string;
+    }
+  | { type: 'provider:delete'; providerId: ProviderId }
+  | { type: 'provider:models'; providerId: ProviderId }
+  | { type: 'provider:connectOpenRouter' }
+  | { type: 'profiles:save'; profile: Profile }
+  | { type: 'profiles:delete'; profileId: string }
+  | { type: 'profiles:import'; json: string }
+  | { type: 'profiles:export' }
+  | { type: 'siteRules:list' }
+  | { type: 'history:export' };
 
 /** Which profile the panel should show, and whether the system picked it. */
 export interface ResolvedProfile {
@@ -97,6 +116,27 @@ export interface ResponseMap {
   'session:hideOrigin': void;
   'session:isOriginHidden': boolean;
   'insert:mainWorld': boolean;
+  'providers:list': ConfiguredProvider[];
+  'provider:save': void;
+  'provider:delete': void;
+  'provider:models': string[];
+  'provider:connectOpenRouter': ProviderTestResult;
+  'profiles:save': Profile[];
+  'profiles:delete': Profile[];
+  'profiles:import': { added: number; error?: string };
+  'profiles:export': string;
+  'siteRules:list': Record<string, SiteRule>;
+  'history:export': string;
+}
+
+/** Safe to send to a UI: describes a configured provider without its key. */
+export interface ConfiguredProvider {
+  providerId: ProviderId;
+  model: string;
+  authMethod: 'manual' | 'oauth';
+  /** So the card can render "key saved" without ever seeing the key. */
+  hasKey: boolean;
+  baseUrl?: string;
 }
 
 export type ResponseFor<T extends Request['type']> = ResponseMap[T];

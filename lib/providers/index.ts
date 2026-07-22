@@ -4,7 +4,11 @@ import type { ProviderCred, ProviderId } from '../storage/schemas';
 import { anthropicAdapter } from './anthropic';
 import { errorFor, toSafeError } from './errors';
 import { mockAdapter } from './mock';
-import { openaiCompatAdapter } from './openai-compat';
+import {
+  buildHeaders,
+  endpointFor,
+  openaiCompatAdapter,
+} from './openai-compat';
 import { getProvider } from './registry';
 import type { ChatAdapter, ChatRequest, ChatResponse } from './types';
 
@@ -28,6 +32,29 @@ export async function chat(
 ): Promise<ChatResponse> {
   const config = getProvider(providerId);
   return adapterFor(providerId)({ ...args, config });
+}
+
+/**
+ * The provider's own model list, so the picker shows what the key can actually
+ * reach rather than a table we would have to keep current by hand.
+ */
+export async function listModels(providerId: ProviderId): Promise<string[]> {
+  const config = getProvider(providerId);
+  const cred = await getCredential(providerId);
+  if (!config.modelsPath || !cred) return [];
+
+  const response = await fetch(endpointFor(config, cred, config.modelsPath), {
+    headers: buildHeaders(config, cred.apiKey),
+  });
+  if (!response.ok) return [];
+
+  const body = (await response.json()) as {
+    data?: { id?: unknown }[];
+  };
+  return (body.data ?? [])
+    .map((entry) => entry.id)
+    .filter((id): id is string => typeof id === 'string')
+    .sort((a, b) => a.localeCompare(b));
 }
 
 /**

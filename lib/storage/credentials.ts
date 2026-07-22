@@ -55,7 +55,13 @@ export async function deleteCredential(providerId: ProviderId): Promise<void> {
  * key material. The options page renders its cards from this.
  */
 export async function listConfiguredProviders(): Promise<
-  { providerId: ProviderId; model: string; authMethod: 'manual' | 'oauth' }[]
+  {
+    providerId: ProviderId;
+    model: string;
+    authMethod: 'manual' | 'oauth';
+    hasKey: boolean;
+    baseUrl?: string;
+  }[]
 > {
   const all = (await credentialsItem.getValue()) ?? {};
   return Object.entries(all).flatMap(([id, cred]) => {
@@ -66,6 +72,12 @@ export async function listConfiguredProviders(): Promise<
         providerId: id as ProviderId,
         model: parsed.data.model,
         authMethod: parsed.data.authMethod,
+        // The *fact* of a key, never the key. This is what lets the options
+        // page render "saved" without the value ever leaving the worker.
+        hasKey: parsed.data.apiKey !== undefined,
+        ...(parsed.data.baseUrl === undefined
+          ? {}
+          : { baseUrl: parsed.data.baseUrl }),
       },
     ];
   });

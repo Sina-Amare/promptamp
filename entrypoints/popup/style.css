@@ -1,0 +1,121 @@
+/*
+ * Toolbar popup — the quick controls, and the only place limits or account
+ * matters may ever surface. Nothing upsell-shaped goes near the button or the
+ * panel (UX-SPEC §1.5).
+ */
+
+:root {
+  color-scheme: light dark;
+  --surface: #ffffff;
+  --surface-raised: #f6f6f9;
+  --border: rgba(0, 0, 0, 0.14);
+  --text: #1a1a21;
+  --text-muted: #5c5c66;
+  --accent: #4f46e5;
+  --accent-fg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #1c1c22;
+    --surface-raised: #26262e;
+    --border: rgba(255, 255, 255, 0.16);
+    --text: #ededf2;
+    --text-muted: #a2a2ae;
+    --accent: #818cf8;
+    --accent-fg: #15152b;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 280px;
+  background: var(--surface);
+  color: var(--text);
+  font:
+    13px/1.5 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+main {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+h1 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.site {
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+}
+
+button {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+button:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.status {
+  min-height: 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+}

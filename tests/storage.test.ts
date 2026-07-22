@@ -220,7 +220,13 @@ describe('credentials', () => {
     const listed = await listConfiguredProviders();
 
     expect(listed).toEqual([
-      { providerId: 'openai', model: 'gpt-4o-mini', authMethod: 'manual' },
+      {
+        providerId: 'openai',
+        model: 'gpt-4o-mini',
+        authMethod: 'manual',
+        // The fact of a key, never the key itself.
+        hasKey: true,
+      },
     ]);
     expect(JSON.stringify(listed)).not.toContain('sk-test');
   });

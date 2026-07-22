@@ -1,0 +1,348 @@
+/*
+ * Options page.
+ *
+ * Same token vocabulary as the injected surfaces, but as a plain stylesheet —
+ * this is our own document, not someone else's page, so there is no shadow
+ * root to adopt into and nothing to defend against.
+ */
+
+:root {
+  color-scheme: light dark;
+  --surface: #ffffff;
+  --surface-raised: #f6f6f9;
+  --border: rgba(0, 0, 0, 0.14);
+  --text: #1a1a21;
+  --text-muted: #5c5c66;
+  --accent: #4f46e5;
+  --accent-fg: #ffffff;
+  --danger: #b3261e;
+  --ok: #15803d;
+  --radius: 10px;
+  --space: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #1c1c22;
+    --surface-raised: #26262e;
+    --border: rgba(255, 255, 255, 0.16);
+    --text: #ededf2;
+    --text-muted: #a2a2ae;
+    --accent: #818cf8;
+    --accent-fg: #15152b;
+    --danger: #f2827a;
+    --ok: #4ade80;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--surface);
+  color: var(--text);
+  font:
+    14px/1.55 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+.shell {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 40px 24px 96px;
+}
+
+header {
+  margin-bottom: 28px;
+}
+
+h1 {
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+
+header p {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ── tabs ─────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs button {
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tabs button[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tabs button:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── cards ────────────────────────────────────────────────────── */
+
+.stack {
+  display: grid;
+  gap: 16px;
+}
+
+.card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  display: grid;
+  gap: 10px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-inline-end: auto;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badge.muted {
+  background: var(--border);
+  color: var(--text-muted);
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+input[type='text'],
+input[type='password'],
+input[type='number'],
+input[type='url'],
+select,
+textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+textarea {
+  min-height: 120px;
+  resize: vertical;
+  font-family: ui-monospace, 'Cascadia Code', Menlo, monospace;
+  font-size: 12px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.row > label {
+  flex: 1;
+  min-width: 180px;
+}
+
+button.primary,
+button.secondary,
+button.quiet,
+button.danger {
+  padding: 7px 14px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button.primary {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+
+button.secondary {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+button.quiet {
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+}
+
+button.danger {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--danger);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.hint a {
+  color: var(--accent);
+}
+
+/* Disclosures the user genuinely needs before choosing a provider. */
+.notice {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.status {
+  font-size: 12px;
+  font-weight: 600;
+  min-height: 16px;
+}
+
+.status.ok {
+  color: var(--ok);
+}
+
+.status.err {
+  color: var(--danger);
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.switch input {
+  width: auto;
+}
+
+.list {
+  display: grid;
+  gap: 6px;
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.list-item span {
+  margin-inline-end: auto;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.history-entry {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.history-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.history-text {
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.history-text.original {
+  color: var(--text-muted);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

@@ -1,4 +1,5 @@
 import { browser, defineBackground } from '#imports';
+import { builtinProfile } from '../lib/enhance/prompts';
 import { listProfiles, resolveProfile } from '../lib/enhance/resolve';
 import { runEnhancement, toSafeError } from '../lib/enhance/run';
 import { mainWorldInsertFunction } from '../lib/insertion/main-world';
@@ -9,8 +10,17 @@ import {
   type EnhanceServerMessage,
   type Request,
 } from '../lib/messaging/protocol';
-import { testProvider } from '../lib/providers';
+import { getProvider, listModels, testProvider } from '../lib/providers';
+import { connectOpenRouter } from '../lib/providers/oauth-openrouter';
 import {
+  deleteCredential,
+  getCredential,
+  listConfiguredProviders,
+  setCredential,
+} from '../lib/storage/credentials';
+import {
+  customProfilesItem,
+  getCustomProfiles,
   getHistory,
   getSettings,
   getSiteRule,
@@ -18,7 +28,9 @@ import {
   patchSettings,
   patchSiteRule,
   sessionHiddenOriginsItem,
+  siteRulesItem,
 } from '../lib/storage/items';
+import { profileImportSchema, profileSchema } from '../lib/storage/schemas';
 
 /**
  * The message router.
@@ -174,6 +186,126 @@ async function handle(
       const hidden = (await sessionHiddenOriginsItem.getValue()) ?? [];
       return hidden.includes(message.origin);
     }
+
+    /* ---- options page ---- */
+
+    case 'providers:list':
+      return listConfiguredProviders();
+
+    case 'provider:save': {
+      const existing = await getCredential(message.providerId);
+      await setCredential(message.providerId, {
+        // An empty key means "leave the saved one alone" — the options page
+        // renders a masked field and never round-trips the real value.
+        ...(message.apiKey
+          ? { apiKey: message.apiKey }
+          : existing?.apiKey
+            ? { apiKey: existing.apiKey }
+            : {}),
+        model: message.model,
+        ...(message.baseUrl ? { baseUrl: message.baseUrl } : {}),
+        authMethod: existing?.authMethod ?? 'manual',
+        addedAt: existing?.addedAt ?? Date.now(),
+      });
+      // First provider configured becomes the active one, so a new user is not
+      // left with a working key and nothing selected.
+      const settings = await getSettings();
+      if (!settings.activeProviderId) {
+        await patchSettings({ activeProviderId: message.providerId });
+      }
+      return undefined;
+    }
+
+    case 'provider:delete': {
+      await deleteCredential(message.providerId);
+      const settings = await getSettings();
+      if (settings.activeProviderId === message.providerId) {
+        const remaining = await listConfiguredProviders();
+        await patchSettings({
+          activeProviderId: remaining[0]?.providerId ?? null,
+        });
+      }
+      return undefined;
+    }
+
+    case 'provider:models':
+      return listModels(message.providerId);
+
+    case 'provider:connectOpenRouter': {
+      try {
+        const key = await connectOpenRouter();
+        await setCredential('openrouter', {
+          apiKey: key,
+          model: getProvider('openrouter').defaultModel,
+          authMethod: 'oauth',
+          addedAt: Date.now(),
+        });
+        const settings = await getSettings();
+        if (!settings.activeProviderId) {
+          await patchSettings({ activeProviderId: 'openrouter' });
+        }
+        return await testProvider('openrouter');
+      } catch (error) {
+        return { ok: false, error: toSafeError(error) };
+      }
+    }
+
+    case 'profiles:save': {
+      const parsed = profileSchema.parse({
+        ...message.profile,
+        builtIn: false,
+      });
+      const custom = await getCustomProfiles();
+      const next = custom.filter((p) => p.id !== parsed.id);
+      next.push(parsed);
+      await customProfilesItem.setValue(next);
+      return listProfiles();
+    }
+
+    case 'profiles:delete': {
+      const custom = await getCustomProfiles();
+      await customProfilesItem.setValue(
+        custom.filter((p) => p.id !== message.profileId),
+      );
+      return listProfiles();
+    }
+
+    case 'profiles:import': {
+      // Untrusted input: a pasted file could be anything at all.
+      const parsed = profileImportSchema.safeParse(
+        JSON.parse(message.json) as unknown,
+      );
+      if (!parsed.success) {
+        return {
+          added: 0,
+          error: 'That file is not a PromptAmp profile export.',
+        };
+      }
+      const custom = await getCustomProfiles();
+      // A built-in id must never be shadowed by an import.
+      const incoming = parsed.data.profiles
+        .filter((p) => !builtinProfile(p.id))
+        .map((p) => ({ ...p, builtIn: false }));
+      const merged = [
+        ...custom.filter((p) => !incoming.some((i) => i.id === p.id)),
+        ...incoming,
+      ];
+      await customProfilesItem.setValue(merged);
+      return { added: incoming.length };
+    }
+
+    case 'profiles:export':
+      return JSON.stringify(
+        { version: 1, profiles: await getCustomProfiles() },
+        null,
+        2,
+      );
+
+    case 'siteRules:list':
+      return (await siteRulesItem.getValue()) ?? {};
+
+    case 'history:export':
+      return JSON.stringify(await getHistory(), null, 2);
   }
 }
 
