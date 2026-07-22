@@ -15,16 +15,30 @@ import type { ProviderId } from './storage/schemas';
  * ever shown, which keeps one code path rather than a browser fork.
  */
 
-/** The host patterns a provider needs before it can be called. */
-export function originsFor(providerId: ProviderId): string[] {
+/**
+ * The host patterns a provider needs before it can be called.
+ *
+ * `baseUrl` overrides the registry default, which is what the custom provider
+ * and the local runners need — their real host is whatever the user typed, and
+ * the permission has to match *that*, not a placeholder.
+ */
+export function originsFor(providerId: ProviderId, baseUrl?: string): string[] {
   const config = PROVIDERS[providerId];
   if (config.kind === 'mock') return [];
-  const url = new URL(config.baseUrl);
-  return [`${url.protocol}//${url.hostname}/*`];
+  try {
+    const url = new URL(baseUrl ?? config.baseUrl);
+    return [`${url.protocol}//${url.hostname}/*`];
+  } catch {
+    // A half-typed URL is not something to request a permission for.
+    return [];
+  }
 }
 
-export async function hasPermission(providerId: ProviderId): Promise<boolean> {
-  const origins = originsFor(providerId);
+export async function hasPermission(
+  providerId: ProviderId,
+  baseUrl?: string,
+): Promise<boolean> {
+  const origins = originsFor(providerId, baseUrl);
   if (origins.length === 0) return true;
   try {
     return await browser.permissions.contains({ origins });
@@ -41,8 +55,9 @@ export async function hasPermission(providerId: ProviderId): Promise<boolean> {
  */
 export async function requestPermission(
   providerId: ProviderId,
+  baseUrl?: string,
 ): Promise<boolean> {
-  const origins = originsFor(providerId);
+  const origins = originsFor(providerId, baseUrl);
   if (origins.length === 0) return true;
   try {
     return await browser.permissions.request({ origins });
@@ -53,10 +68,13 @@ export async function requestPermission(
 
 /** Providers that are configured but cannot actually be reached yet. */
 export async function missingPermissions(
-  providerIds: ProviderId[],
+  providers: { providerId: ProviderId; baseUrl?: string }[],
 ): Promise<ProviderId[]> {
   const checks = await Promise.all(
-    providerIds.map(async (id) => ({ id, ok: await hasPermission(id) })),
+    providers.map(async (entry) => ({
+      id: entry.providerId,
+      ok: await hasPermission(entry.providerId, entry.baseUrl),
+    })),
   );
   return checks.filter((entry) => !entry.ok).map((entry) => entry.id);
 }

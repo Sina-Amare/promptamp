@@ -28,6 +28,12 @@ export interface ProviderConfig {
   maxTokensField: 'max_tokens' | 'max_completion_tokens';
   /** Local runners have no key. Absence of a key is not a misconfiguration. */
   requiresKey: boolean;
+  /**
+   * Neither required nor pointless: a user-supplied endpoint may be an open
+   * self-hosted server or a LiteLLM proxy behind a master key, and only the
+   * user knows which. The field is offered, not demanded.
+   */
+  keyOptional?: boolean;
   /** Local runners may be pointed somewhere else; remote hosts may not. */
   allowsCustomBaseUrl: boolean;
   /** Untagged — no referral parameters, ever (principle 12). */
@@ -144,6 +150,25 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
     requiresKey: false,
     allowsCustomBaseUrl: true,
     setupUrl: 'https://lmstudio.ai/',
+  },
+
+  custom: {
+    id: 'custom',
+    label: 'Custom (OpenAI-compatible)',
+    kind: 'openai-compat',
+    // Replaced entirely by whatever the user enters; the placeholder just
+    // shows the expected shape.
+    baseUrl: 'https://api.example.com',
+    chatPath: '/v1/chat/completions',
+    authStyle: 'bearer',
+    defaultModel: '',
+    modelsPath: '/v1/models',
+    maxTokensField: 'max_tokens',
+    // Some self-hosted servers have no auth at all, so an empty key is valid.
+    requiresKey: false,
+    keyOptional: true,
+    allowsCustomBaseUrl: true,
+    setupUrl: '',
   },
 
   mock: {

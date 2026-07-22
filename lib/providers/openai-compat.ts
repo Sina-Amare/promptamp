@@ -65,9 +65,11 @@ export function endpointFor(
 export const openaiCompatAdapter = async (
   req: ChatRequest,
 ): Promise<ChatResponse> => {
-  const { config, cred, system, user, maxTokens, signal } = req;
+  const { config, cred, system, user, maxTokens, signal, onChunk } = req;
 
   if (config.requiresKey && !cred.apiKey) throw errorFor('bad-key');
+
+  const streaming = onChunk !== undefined;
 
   const body: Record<string, unknown> = {
     model: cred.model,
@@ -75,7 +77,10 @@ export const openaiCompatAdapter = async (
       { role: 'system', content: system },
       { role: 'user', content: user },
     ],
-    stream: false,
+    stream: streaming,
+    // Ask for usage on the final SSE frame; providers that ignore this simply
+    // return no usage, and the cost readout degrades to a token count.
+    ...(streaming ? { stream_options: { include_usage: true } } : {}),
     [config.maxTokensField]: maxTokens,
   };
 
@@ -89,6 +94,8 @@ export const openaiCompatAdapter = async (
     },
     config,
   );
+
+  if (streaming) return readSse(response, onChunk);
 
   const parsed = (await response.json()) as CompletionBody;
   const raw = parsed.choices?.[0]?.message?.content;
@@ -110,6 +117,81 @@ export const openaiCompatAdapter = async (
       : { completionTokens: parsed.usage.completion_tokens }),
   };
 };
+
+/**
+ * Reads an OpenAI-style SSE body.
+ *
+ * Frames arrive split across network chunks, so a partial line has to be held
+ * back rather than parsed — a half-frame is not malformed JSON to report, it is
+ * simply not finished yet.
+ */
+async function readSse(
+  response: Response,
+  onChunk: (delta: string) => void,
+): Promise<ChatResponse> {
+  const body = response.body;
+  if (!body) throw errorFor('network');
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let text = '';
+  let promptTokens: number | undefined;
+  let completionTokens: number | undefined;
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      // The tail is whatever has not been terminated yet.
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const payload = trimmed.slice(5).trim();
+        if (payload === '' || payload === '[DONE]') continue;
+
+        let frame: StreamFrame;
+        try {
+          frame = JSON.parse(payload) as StreamFrame;
+        } catch {
+          continue;
+        }
+
+        const delta = frame.choices?.[0]?.delta?.content;
+        if (typeof delta === 'string' && delta !== '') {
+          text += delta;
+          onChunk(delta);
+        }
+        if (frame.usage) {
+          promptTokens = frame.usage.prompt_tokens ?? promptTokens;
+          completionTokens = frame.usage.completion_tokens ?? completionTokens;
+        }
+      }
+    }
+  } finally {
+    // Abort mid-stream leaves the reader open otherwise, which keeps the
+    // connection — and on some providers the billing — alive.
+    reader.cancel().catch(() => undefined);
+  }
+
+  if (!text.trim()) throw errorFor('refusal');
+
+  return {
+    text,
+    ...(promptTokens === undefined ? {} : { promptTokens }),
+    ...(completionTokens === undefined ? {} : { completionTokens }),
+  };
+}
+
+interface StreamFrame {
+  choices?: { delta?: { content?: unknown } }[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+}
 
 /**
  * Shared by both adapters. Retries only 429 and only twice (principle 10):

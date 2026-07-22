@@ -91,12 +91,27 @@ describe('registry', () => {
   });
 
   it('never sends a key to a host the user did not choose', () => {
-    // Only local runners may be redirected. Allowing a custom base URL for a
-    // remote provider would be an exfiltration path for the API key.
+    // A custom base URL is only allowed where the host *is* the user's own
+    // choice: the two local runners, and the explicit "Custom" provider whose
+    // entire purpose is pointing at your own endpoint. Letting a *named*
+    // provider be redirected would be an exfiltration path — a key entered
+    // under "OpenAI" would silently go somewhere else.
     for (const config of Object.values(PROVIDERS)) {
       if (config.allowsCustomBaseUrl) {
-        expect(['ollama', 'lmstudio']).toContain(config.id);
+        expect(['ollama', 'lmstudio', 'custom']).toContain(config.id);
       }
+    }
+  });
+
+  it('pins every named remote provider to its own host', () => {
+    for (const id of [
+      'openai',
+      'anthropic',
+      'groq',
+      'openrouter',
+      'gemini',
+    ] as const) {
+      expect(PROVIDERS[id].allowsCustomBaseUrl).toBe(false);
     }
   });
 
@@ -107,10 +122,14 @@ describe('registry', () => {
     }
   });
 
-  it('requires a key for every remote provider', () => {
+  it('requires a key for every hosted provider', () => {
+    // The exceptions are all endpoints the user runs or nominates themselves,
+    // where "no auth" is a legitimate configuration rather than a mistake.
     for (const config of Object.values(PROVIDERS)) {
-      const isLocal = ['ollama', 'lmstudio', 'mock'].includes(config.id);
-      expect(config.requiresKey).toBe(!isLocal);
+      const userSupplied = ['ollama', 'lmstudio', 'custom', 'mock'].includes(
+        config.id,
+      );
+      expect(config.requiresKey).toBe(!userSupplied);
     }
   });
 
@@ -336,7 +355,15 @@ describe('anthropic adapter', () => {
     expect(result.completionTokens).toBe(5);
 
     const body = bodyOf(fetchMock);
-    expect(body.system).toBe('You rewrite drafts.');
+    // A block array rather than a bare string, so the system prompt can carry
+    // a cache breakpoint — it is ~3k tokens and identical on every call.
+    expect(body.system).toEqual([
+      {
+        type: 'text',
+        text: 'You rewrite drafts.',
+        cache_control: { type: 'ephemeral' },
+      },
+    ]);
     expect(body.messages).toEqual([
       { role: 'user', content: '<draft>make a website</draft>' },
     ]);

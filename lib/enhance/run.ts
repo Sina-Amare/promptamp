@@ -22,6 +22,8 @@ export interface RunContext {
   signal: AbortSignal;
   /** Announced before the request so the panel can render the profile chip. */
   onAccepted?: (profileId: string, auto: boolean) => void;
+  /** Each delta as it arrives. Supplying this streams the request. */
+  onChunk?: (delta: string) => void;
 }
 
 export async function runEnhancement(
@@ -57,6 +59,7 @@ export async function runEnhancement(
     profile,
     request.draft,
     request.adjust,
+    settings.outputLanguageOverride,
   );
 
   const response = await chat(settings.activeProviderId, {
@@ -65,6 +68,7 @@ export async function runEnhancement(
     user,
     maxTokens,
     signal: context.signal,
+    ...(context.onChunk ? { onChunk: context.onChunk } : {}),
   });
 
   // Client-side defence: the prompts forbid lead-ins and fences, and cheap

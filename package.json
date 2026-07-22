@@ -33,9 +33,11 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test",
+    "e2e": "wxt build && playwright test",
+    "e2e:only": "playwright test",
     "postinstall": "wxt prepare",
-    "battery": "tsx scripts/battery.ts"
+    "battery": "tsx scripts/battery.ts",
+    "latency": "tsx scripts/latency.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

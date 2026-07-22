@@ -100,6 +100,24 @@ async function renderPanel(): Promise<void> {
  * in a FAQ. Google trains on free-tier Gemini traffic, and Ollama refuses
  * cross-origin requests until it is told not to.
  */
+/** Suggestions only — the field takes any language the user types. */
+const OUTPUT_LANGUAGES: readonly string[] = [
+  'English',
+  'Persian (فارسی)',
+  'Arabic',
+  'Spanish',
+  'French',
+  'German',
+  'Portuguese',
+  'Italian',
+  'Turkish',
+  'Russian',
+  'Hindi',
+  'Chinese (Simplified)',
+  'Japanese',
+  'Korean',
+];
+
 const PROVIDER_NOTES: Partial<Record<ProviderId, string>> = {
   gemini:
     'Google may use free-tier API content to improve their models. Use a paid key if your drafts are sensitive.',
@@ -109,6 +127,8 @@ const PROVIDER_NOTES: Partial<Record<ProviderId, string>> = {
     'Enable the local server in LM Studio, and allow cross-origin requests in its server settings.',
   openrouter:
     'Connect signs you in without pasting a key — PromptAmp never sees your password.',
+  custom:
+    'Any endpoint that speaks the OpenAI chat-completions format: Together, Fireworks, DeepSeek, Mistral, xAI, Cerebras, Azure OpenAI, a self-hosted vLLM, or your own LiteLLM proxy. Enter the base URL and PromptAmp will ask your browser for permission to reach that host — and only that host.',
 };
 
 async function providersTab(): Promise<HTMLElement> {
@@ -120,8 +140,18 @@ async function providersTab(): Promise<HTMLElement> {
 
   // Firefox grants host permissions only on request. Without this, a valid key
   // fails every call and looks exactly like a bad key.
-  const blocked = await missingPermissions(configured.map((c) => c.providerId));
-  for (const id of blocked) stack.append(permissionCard(id));
+  const blocked = await missingPermissions(
+    configured.map((c) => ({
+      providerId: c.providerId,
+      ...(c.baseUrl === undefined ? {} : { baseUrl: c.baseUrl }),
+    })),
+  );
+  const savedBaseUrls = new Map(
+    configured.map((c) => [c.providerId, c.baseUrl]),
+  );
+  for (const id of blocked) {
+    stack.append(permissionCard(id, savedBaseUrls.get(id)));
+  }
 
   for (const id of USER_FACING_PROVIDERS) {
     stack.append(providerCard(id, byId.get(id), settings.activeProviderId));
@@ -130,18 +160,20 @@ async function providersTab(): Promise<HTMLElement> {
   return stack;
 }
 
-function permissionCard(id: ProviderId): HTMLElement {
+function permissionCard(id: ProviderId, baseUrl?: string): HTMLElement {
   const config = PROVIDERS[id];
+  const host = hostnameOf(baseUrl ?? config.baseUrl);
+
   const grant = el('button', {
     class: 'primary',
-    text: `Allow access to ${config.label}`,
+    text: `Allow access to ${host}`,
     attrs: { type: 'button' },
   });
   // Must be a real click: Firefox rejects a permission request that did not
   // come from a user gesture.
   grant.addEventListener('click', () => {
     void (async () => {
-      await requestPermission(id);
+      await requestPermission(id, baseUrl);
       await renderPanel();
     })();
   });
@@ -155,11 +187,19 @@ function permissionCard(id: ProviderId): HTMLElement {
       }),
       el('p', {
         class: 'notice',
-        text: `Your browser has not yet allowed PromptAmp to reach ${new URL(config.baseUrl).hostname}. Until you allow it, requests will fail even though your key is correct.`,
+        text: `Your browser has not yet allowed PromptAmp to reach ${host}. Until you allow it, requests will fail even though your key is correct.`,
       }),
       grant,
     ],
   });
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
 }
 
 function providerCard(
@@ -211,6 +251,19 @@ function providerCard(
   save.addEventListener('click', () => {
     void (async () => {
       setStatus('Saving…', '');
+
+      // A user-supplied host is not covered by the manifest, so ask for it
+      // here — inside the click, which is the only place Firefox allows it.
+      if (config.allowsCustomBaseUrl && baseUrlInput.value.trim()) {
+        const granted = await requestPermission(id, baseUrlInput.value.trim());
+        if (!granted) {
+          setStatus(
+            'Saved, but your browser declined access to that host — requests will fail until you allow it.',
+            'err',
+          );
+        }
+      }
+
       await sendMessage({
         type: 'provider:save',
         providerId: id,
@@ -351,10 +404,12 @@ function providerCard(
         ],
       }),
       note ? el('p', { class: 'notice', text: note }) : null,
-      config.requiresKey
+      config.requiresKey || config.keyOptional
         ? el('label', {
             children: [
-              el('span', { text: 'API key' }),
+              el('span', {
+                text: config.requiresKey ? 'API key' : 'API key (if required)',
+              }),
               keyInput,
               el('span', {
                 class: 'hint',
@@ -666,6 +721,32 @@ async function behaviorTab(): Promise<HTMLElement> {
     });
   });
 
+  // A combobox rather than a select: "Brazilian Portuguese" and "formal
+  // Japanese" are reasonable answers, and no fixed list contains them.
+  const outputLanguage = el('input', {
+    attrs: {
+      type: 'text',
+      list: 'pa-output-languages',
+      spellcheck: 'false',
+      maxlength: '40',
+      placeholder: 'Same language as my draft',
+    },
+  });
+  outputLanguage.value = settings.outputLanguageOverride;
+  outputLanguage.addEventListener('change', () => {
+    void sendMessage({
+      type: 'settings:patch',
+      patch: { outputLanguageOverride: outputLanguage.value.trim() },
+    });
+  });
+
+  const languageList = el('datalist', {
+    attrs: { id: 'pa-output-languages' },
+    children: OUTPUT_LANGUAGES.map((name) =>
+      el('option', { attrs: { value: name } }),
+    ),
+  });
+
   const softCap = el('input', {
     attrs: { type: 'number', min: '0', max: '10000' },
   });
@@ -689,6 +770,17 @@ async function behaviorTab(): Promise<HTMLElement> {
           autoProfile,
           el('label', {
             children: [el('span', { text: 'Default profile' }), defaultProfile],
+          }),
+          el('label', {
+            children: [
+              el('span', { text: 'Enhanced prompt language' }),
+              outputLanguage,
+              languageList,
+              el('span', {
+                class: 'hint',
+                text: 'Write your draft in any language and get the enhanced prompt in this one. Leave it empty to keep your draft’s language — image and video prompts still go out in English, which is what those models are trained on.',
+              }),
+            ],
           }),
           globallyHidden,
         ],

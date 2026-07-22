@@ -41,6 +41,19 @@ export default defineConfig({
 
     host_permissions: PROVIDER_API_HOSTS,
 
+    // For the "Custom (OpenAI-compatible)" provider only.
+    //
+    // Optional, not granted at install: the install-time prompt stays the
+    // narrow list above, and a user who points PromptAmp at their own
+    // endpoint grants exactly that one host, on a click, at the moment they
+    // save it. Requesting every https host up front would be a far worse
+    // trade for both the user and store review.
+    optional_host_permissions: [
+      'https://*/*',
+      'http://localhost/*',
+      'http://127.0.0.1/*',
+    ],
+
     commands: {
       'enhance-prompt': {
         suggested_key: { default: 'Alt+E' },

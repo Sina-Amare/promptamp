@@ -20,6 +20,7 @@ import {
 } from '../messaging/protocol';
 import { el } from './host';
 import { createPanel, type PanelHandle } from './panel';
+import { createSmoothStream, type SmoothStream } from './panel/stream';
 
 /**
  * One enhancement, from button press to accepted insertion.
@@ -67,6 +68,7 @@ export function createSession(
   let panel: PanelHandle | null = null;
   let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
   let cleanupPosition: (() => void) | undefined;
+  let stream: SmoothStream | null = null;
   let closed = false;
 
   function ensurePanel(): PanelHandle {
@@ -148,19 +150,41 @@ export function createSession(
 
     port.onMessage.addListener((raw: unknown) => {
       const message = raw as EnhanceServerMessage;
-      clearTimeout(skeletonTimer);
 
       switch (message.type) {
         case 'accepted':
           ensurePanel().setProfile(message.profileId, message.auto);
           break;
-        case 'chunk':
+
+        case 'chunk': {
+          // First delta wins the race against the skeleton timer: if the
+          // model answered fast, the user never sees a loading state at all.
+          clearTimeout(skeletonTimer);
+          const panelRef = ensurePanel();
+          if (!stream) {
+            panelRef.beginStreaming();
+            stream = createSmoothStream((partial) => {
+              panelRef.streamText(partial);
+            });
+          }
+          stream.push(message.text);
           break;
+        }
+
         case 'done':
+          clearTimeout(skeletonTimer);
+          // Land on the exact final text — the smooth reveal may still be a
+          // few characters behind the network when the stream ends.
+          stream?.finish();
+          stream = null;
           callbacks.onStateChange('idle');
           ensurePanel().showResult(message.result.text, draft);
           break;
+
         case 'error':
+          clearTimeout(skeletonTimer);
+          stream?.cancel();
+          stream = null;
           handleError(message.error);
           break;
       }
@@ -269,6 +293,8 @@ export function createSession(
   function close(): void {
     if (closed) return;
     closed = true;
+    stream?.cancel();
+    stream = null;
     stopPort();
     cleanupPosition?.();
     panel?.destroy();

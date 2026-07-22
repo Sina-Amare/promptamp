@@ -15,21 +15,31 @@ async function openOptions(page: Page, extensionId: string): Promise<void> {
   await expect(page.getByRole('heading', { name: 'PromptAmp' })).toBeVisible();
 }
 
+/**
+ * Match on the card's exact title, not on text anywhere in the card — the
+ * "Custom (OpenAI-compatible)" card contains the string "OpenAI" too.
+ */
+function card(page: Page, title: string) {
+  return page.locator('.card').filter({
+    has: page.locator('.card-title', { hasText: new RegExp(`^${title}$`) }),
+  });
+}
+
 test('saves a key and never sends it back to the page', async ({
   page,
   extensionId,
 }) => {
   await openOptions(page, extensionId);
 
-  const card = page.locator('.card', { hasText: 'OpenAI' });
-  await card.locator('input[type="password"]').fill(KEY);
-  await card.getByRole('button', { name: 'Save', exact: true }).click();
+  const target = card(page, 'OpenAI');
+  await target.locator('input[type="password"]').fill(KEY);
+  await target.getByRole('button', { name: 'Save', exact: true }).click();
 
-  await expect(card.locator('.status')).toHaveText('Saved');
+  await expect(target.locator('.status')).toHaveText('Saved');
 
   // The field is cleared and re-renders as a placeholder, never a value.
-  await expect(card.locator('input[type="password"]')).toHaveValue('');
-  await expect(card.locator('input[type="password"]')).toHaveAttribute(
+  await expect(target.locator('input[type="password"]')).toHaveValue('');
+  await expect(target.locator('input[type="password"]')).toHaveAttribute(
     'placeholder',
     /saved/,
   );
@@ -45,12 +55,12 @@ test('saves a key and never sends it back to the page', async ({
 test('marks the first saved provider active', async ({ page, extensionId }) => {
   await openOptions(page, extensionId);
 
-  const card = page.locator('.card', { hasText: 'Groq' });
-  await card.locator('input[type="password"]').fill(KEY);
-  await card.getByRole('button', { name: 'Save', exact: true }).click();
+  const target = card(page, 'Groq');
+  await target.locator('input[type="password"]').fill(KEY);
+  await target.getByRole('button', { name: 'Save', exact: true }).click();
 
   // A user who has just added their only key should not also have to select it.
-  await expect(card.locator('.badge', { hasText: 'Active' })).toBeVisible();
+  await expect(target.locator('.badge', { hasText: 'Active' })).toBeVisible();
 });
 
 test('removing the active provider clears it', async ({
@@ -58,13 +68,13 @@ test('removing the active provider clears it', async ({
   extensionId,
 }) => {
   await openOptions(page, extensionId);
-  const card = page.locator('.card', { hasText: 'Groq' });
-  await card.locator('input[type="password"]').fill(KEY);
-  await card.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(card.locator('.badge', { hasText: 'Active' })).toBeVisible();
+  const target = card(page, 'Groq');
+  await target.locator('input[type="password"]').fill(KEY);
+  await target.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(target.locator('.badge', { hasText: 'Active' })).toBeVisible();
 
-  await card.getByRole('button', { name: 'Remove' }).click();
-  await expect(card.locator('.badge', { hasText: 'Active' })).toHaveCount(0);
+  await target.getByRole('button', { name: 'Remove' }).click();
+  await expect(target.locator('.badge', { hasText: 'Active' })).toHaveCount(0);
 });
 
 test('shows the Gemini training disclosure before the key field', async ({
@@ -73,15 +83,15 @@ test('shows the Gemini training disclosure before the key field', async ({
 }) => {
   await openOptions(page, extensionId);
   // A user needs to know this to choose, not to discover it afterwards.
-  await expect(
-    page.locator('.card', { hasText: 'Google Gemini' }).locator('.notice'),
-  ).toContainText('improve their models');
+  await expect(card(page, 'Google Gemini').locator('.notice')).toContainText(
+    'improve their models',
+  );
 });
 
 test('shows the Ollama origin instructions', async ({ page, extensionId }) => {
   await openOptions(page, extensionId);
   await expect(
-    page.locator('.card', { hasText: 'Ollama' }).locator('.notice'),
+    card(page, 'Ollama \\(local\\)').locator('.notice'),
   ).toContainText('OLLAMA_ORIGINS');
 });
 
@@ -132,6 +142,28 @@ test('behavior tab persists a setting', async ({ page, extensionId }) => {
   await expect(page.locator('input[type="number"]')).toHaveValue('25');
 });
 
+test('persists an enhanced-prompt language across reloads', async ({
+  page,
+  extensionId,
+}) => {
+  await openOptions(page, extensionId);
+  await page.getByRole('tab', { name: 'Behavior' }).click();
+
+  const language = page.locator('input[list="pa-output-languages"]');
+  // Empty means "same as my draft" — the field says so rather than hiding it
+  // behind a mode toggle.
+  await expect(language).toHaveAttribute('placeholder', /Same language/);
+
+  await language.fill('English');
+  await language.blur();
+
+  await page.reload();
+  await page.getByRole('tab', { name: 'Behavior' }).click();
+  await expect(page.locator('input[list="pa-output-languages"]')).toHaveValue(
+    'English',
+  );
+});
+
 test('history tab states that nothing leaves the device', async ({
   page,
   extensionId,
@@ -140,5 +172,30 @@ test('history tab states that nothing leaves the device', async ({
   await page.getByRole('tab', { name: 'History' }).click();
   await expect(page.locator('.hint').first()).toContainText(
     'never uploaded anywhere',
+  );
+});
+
+test('offers a custom OpenAI-compatible endpoint with a base URL', async ({
+  page,
+  extensionId,
+}) => {
+  await openOptions(page, extensionId);
+  const target = card(page, 'Custom \\(OpenAI-compatible\\)');
+
+  // The whole point: any provider that speaks the OpenAI wire format.
+  await expect(target.locator('.notice')).toContainText('LiteLLM proxy');
+  await expect(target.locator('input[type="url"]')).toBeVisible();
+  await expect(target.locator('input[type="password"]')).toBeVisible();
+});
+
+test('pins named providers to their own host', async ({
+  page,
+  extensionId,
+}) => {
+  await openOptions(page, extensionId);
+  // A key entered under "OpenAI" must be unable to go anywhere else, so that
+  // card has no base-URL field at all.
+  await expect(card(page, 'OpenAI').locator('input[type="url"]')).toHaveCount(
+    0,
   );
 });

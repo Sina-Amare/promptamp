@@ -43,6 +43,7 @@ export function assemble(
   profile: Profile,
   draft: string,
   adjust?: string,
+  outputLanguage?: string,
 ): AssembledRequest {
   const trimmed = draft.trim();
 
@@ -56,10 +57,40 @@ export function assemble(
   }
 
   return {
-    system: profile.systemPrompt,
+    system: profile.systemPrompt + languageDirective(outputLanguage),
     user: buildUserTurn(trimmed, adjust),
     maxTokens: MAX_OUTPUT_TOKENS,
   };
+}
+
+/**
+ * Overrides the LANGUAGE section every profile carries.
+ *
+ * Appended *last* on purpose: each built-in prompt states its own language rule
+ * (mirror the draft, or English for image/video), and the closing instruction
+ * is the one models weight most heavily. The carve-outs are not optional —
+ * translating a stack trace, a quoted string, or `--ar 16:9` would destroy the
+ * rewrite, and every profile's LITERAL/VERBATIM rule depends on them holding.
+ */
+export function languageDirective(language: string | undefined): string {
+  const name = sanitizeLanguage(language);
+  if (!name) return '';
+
+  return `
+
+OUTPUT LANGUAGE — this section overrides the LANGUAGE section above.
+Write the entire rewrite in ${name}, whatever language the draft is written in, translating its meaning faithfully. Everything you add is in ${name} too; never mix another language into it. Unchanged regardless: code, error messages, file paths, identifiers, URLs, quoted strings, text meant to appear inside an image or on screen, and user-typed parameters — those stay exactly as the draft wrote them.`;
+}
+
+/**
+ * The value reaches the system prompt, and it is free text. Newlines would let
+ * it forge a new section, so they are the one thing that cannot survive.
+ */
+function sanitizeLanguage(language: string | undefined): string {
+  return (language ?? '')
+    .replace(/[\p{Cc}\p{Cf}]/gu, ' ')
+    .trim()
+    .slice(0, 40);
 }
 
 /**

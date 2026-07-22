@@ -39,6 +39,12 @@ export interface PanelCallbacks {
 export interface PanelHandle {
   element: HTMLElement;
   showLoading: () => void;
+  /**
+   * Swap the skeleton for live text. Called on the first delta, so the user
+   * starts reading roughly a second before the rewrite is finished.
+   */
+  beginStreaming: () => void;
+  streamText: (partial: string) => void;
   showResult: (text: string, original: string) => void;
   showError: (error: SafeError) => void;
   showNotice: (message: string) => void;
@@ -417,6 +423,21 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
       );
       status.textContent = 'Enhancing draft';
       setControlsEnabled(false);
+    },
+
+    beginStreaming: () => {
+      // Height was already reserved by the skeleton, so replacing it with text
+      // causes no layout shift — the words simply appear where the shimmer was.
+      bodyWrap.replaceChildren(body);
+      body.replaceChildren();
+      body.setAttribute('contenteditable', 'false');
+      status.textContent = 'Enhancing draft';
+    },
+
+    streamText: (partial) => {
+      // textContent, not append: the smooth renderer hands over the whole
+      // string each frame, which keeps the DOM to a single text node.
+      body.textContent = partial;
     },
 
     showResult: (text, source) => {

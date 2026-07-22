@@ -19,6 +19,16 @@ export const providerIdSchema = z.enum([
   'gemini',
   'ollama',
   'lmstudio',
+  /**
+   * Any OpenAI-compatible endpoint the user points us at: Together,
+   * Fireworks, DeepSeek, Mistral, xAI, Cerebras, Azure OpenAI, a self-hosted
+   * vLLM, or a LiteLLM proxy they run themselves.
+   *
+   * This is why there is no abstraction layer here. The category converged on
+   * one wire format, so "support everything" is a base-URL field rather than a
+   * dependency.
+   */
+  'custom',
   'mock',
 ]);
 export type ProviderId = z.infer<typeof providerIdSchema>;
@@ -108,6 +118,14 @@ export const settingsSchema = z.object({
   historyEnabled: z.boolean().default(true),
   historyLimit: z.number().int().min(0).max(1000).default(200),
   uiLanguage: z.enum(['auto', 'en', 'fa']).default('auto'),
+  /**
+   * Language the *rewrite* is written in, independent of the draft's language —
+   * so a Persian draft can produce an English prompt. Empty means each profile
+   * keeps its own rule (`outputLanguage` above: mirror the draft, or English
+   * for image/video). Free text, because "Brazilian Portuguese" and "formal
+   * Japanese" are things people legitimately want and a fixed list is not.
+   */
+  outputLanguageOverride: z.string().max(40).default(''),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 
