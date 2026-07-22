@@ -38,6 +38,7 @@
     "postinstall": "wxt prepare",
     "icons": "tsx scripts/icons.ts",
     "shots": "wxt build && playwright test e2e/screenshots.spec.ts",
+    "smoke": "wxt build && tsx scripts/smoke.ts",
     "battery": "tsx scripts/battery.ts",
     "latency": "tsx scripts/latency.ts"
   },
