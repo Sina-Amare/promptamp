@@ -1,5 +1,6 @@
 import { BUILTIN_PROFILES } from '../../lib/enhance/prompts';
 import { sendMessage } from '../../lib/messaging/client';
+import { missingPermissions, requestPermission } from '../../lib/permissions';
 import type { ConfiguredProvider } from '../../lib/messaging/protocol';
 import { PROVIDERS, USER_FACING_PROVIDERS } from '../../lib/providers/registry';
 import { formatCostUsd } from '../../lib/providers/cost';
@@ -117,11 +118,48 @@ async function providersTab(): Promise<HTMLElement> {
 
   const stack = el('div', { class: 'stack' });
 
+  // Firefox grants host permissions only on request. Without this, a valid key
+  // fails every call and looks exactly like a bad key.
+  const blocked = await missingPermissions(configured.map((c) => c.providerId));
+  for (const id of blocked) stack.append(permissionCard(id));
+
   for (const id of USER_FACING_PROVIDERS) {
     stack.append(providerCard(id, byId.get(id), settings.activeProviderId));
   }
 
   return stack;
+}
+
+function permissionCard(id: ProviderId): HTMLElement {
+  const config = PROVIDERS[id];
+  const grant = el('button', {
+    class: 'primary',
+    text: `Allow access to ${config.label}`,
+    attrs: { type: 'button' },
+  });
+  // Must be a real click: Firefox rejects a permission request that did not
+  // come from a user gesture.
+  grant.addEventListener('click', () => {
+    void (async () => {
+      await requestPermission(id);
+      await renderPanel();
+    })();
+  });
+
+  return el('section', {
+    class: 'card',
+    children: [
+      el('span', {
+        class: 'card-title',
+        text: `${config.label} needs your permission`,
+      }),
+      el('p', {
+        class: 'notice',
+        text: `Your browser has not yet allowed PromptAmp to reach ${new URL(config.baseUrl).hostname}. Until you allow it, requests will fail even though your key is correct.`,
+      }),
+      grant,
+    ],
+  });
 }
 
 function providerCard(

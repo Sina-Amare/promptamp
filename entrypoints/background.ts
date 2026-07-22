@@ -5,6 +5,7 @@ import { runEnhancement, toSafeError } from '../lib/enhance/run';
 import { mainWorldInsertFunction } from '../lib/insertion/main-world';
 import {
   ENHANCE_PORT,
+  TRIGGER_ENHANCE,
   isTrustedSender,
   type EnhanceClientMessage,
   type EnhanceServerMessage,
@@ -101,6 +102,35 @@ export default defineBackground(() => {
     });
   });
 
+  /**
+   * Alt+E. Forwarded to the content script, which is the only side that knows
+   * which field has focus.
+   */
+  browser.commands.onCommand.addListener((command) => {
+    if (command !== 'enhance-prompt') return;
+    void notifyActiveTab();
+  });
+
+  const MENU_ID = 'promptamp-enhance';
+
+  // contextMenus.create throws on a duplicate id, and the worker re-runs this
+  // on every wake — remove first rather than swallow the error.
+  browser.runtime.onInstalled.addListener(() => {
+    void browser.contextMenus.removeAll().then(() => {
+      browser.contextMenus.create({
+        id: MENU_ID,
+        title: 'Enhance this draft with PromptAmp',
+        // Only where there is something to enhance.
+        contexts: ['editable'],
+      });
+    });
+  });
+
+  browser.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId !== MENU_ID) return;
+    void notifyActiveTab(tab?.id);
+  });
+
   // Returning a promise IS the webextension-polyfill contract for an async
   // reply — the `return true` + sendResponse callback style silently never
   // delivers through it. The upstream type models the callback style only.
@@ -125,6 +155,30 @@ export default defineBackground(() => {
     },
   );
 });
+
+/**
+ * Nudge the content script in the frontmost tab.
+ *
+ * Failure is expected and ignored: the page may be a chrome:// URL, a PDF, or
+ * a site the user hid PromptAmp on — none of which have a listener, and none
+ * of which are worth an error.
+ */
+async function notifyActiveTab(tabId?: number): Promise<void> {
+  let target = tabId;
+  if (target === undefined) {
+    const [tab] = await browser.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
+    target = tab?.id;
+  }
+  if (target === undefined) return;
+  try {
+    await browser.tabs.sendMessage(target, { type: TRIGGER_ENHANCE });
+  } catch {
+    // No content script in that tab.
+  }
+}
 
 function isRequest(value: unknown): value is Request {
   return (

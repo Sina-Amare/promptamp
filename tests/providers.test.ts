@@ -9,6 +9,7 @@ import {
   parseRetryAfter,
   toSafeError,
 } from '../lib/providers/errors';
+import { hasPermission, originsFor } from '../lib/permissions';
 import { mockAdapter } from '../lib/providers/mock';
 import {
   buildHeaders,
@@ -496,6 +497,36 @@ describe('cost', () => {
     expect(formatCostUsd(0)).toBe('free');
     expect(formatCostUsd(0.0004)).toBe('<$0.01');
     expect(formatCostUsd(1.235)).toBe('$1.24');
+  });
+});
+
+describe('host permissions', () => {
+  it('derives the exact host pattern each provider needs', () => {
+    expect(originsFor('openai')).toEqual(['https://api.openai.com/*']);
+    expect(originsFor('anthropic')).toEqual(['https://api.anthropic.com/*']);
+    expect(originsFor('ollama')).toEqual(['http://localhost/*']);
+  });
+
+  it('asks for nothing on behalf of the mock provider', () => {
+    expect(originsFor('mock')).toEqual([]);
+  });
+
+  it('never requests a wildcard host', () => {
+    // A broad grant here would undo the narrow host list in the manifest.
+    for (const id of USER_FACING_PROVIDERS) {
+      for (const origin of originsFor(id)) {
+        expect(origin).not.toBe('<all_urls>');
+        expect(origin).not.toMatch(/^\*:\/\//);
+        expect(origin).not.toMatch(/^https?:\/\/\*\//);
+      }
+    }
+  });
+
+  it('treats a browser without the API as already granted', async () => {
+    // Chrome grants host_permissions at install; only Firefox MV3 defers them.
+    vi.stubGlobal('chrome', {});
+    await expect(hasPermission('mock')).resolves.toBe(true);
+    vi.unstubAllGlobals();
   });
 });
 

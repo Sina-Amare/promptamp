@@ -1,5 +1,6 @@
-import { defineContentScript } from '#imports';
+import { browser, defineContentScript } from '#imports';
 import { sendMessage } from '../lib/messaging/client';
+import { TRIGGER_ENHANCE } from '../lib/messaging/protocol';
 import { createButton, type ButtonHandle } from '../lib/ui/button';
 import { BUTTON_CSS } from '../lib/ui/button/styles';
 import { createShadowHost, el } from '../lib/ui/host';
@@ -187,6 +188,25 @@ export default defineContentScript({
     );
 
     tracker.start();
+
+    /**
+     * Alt+E and the context menu both arrive here from the worker, which has no
+     * DOM of its own. A keyboard-invoked panel opens with no entrance
+     * animation — animating a high-frequency keyboard action reads as lag.
+     */
+    browser.runtime.onMessage.addListener((message: unknown) => {
+      if (
+        typeof message !== 'object' ||
+        message === null ||
+        (message as { type?: unknown }).type !== TRIGGER_ENHANCE
+      ) {
+        return;
+      }
+      const field = tracker.current();
+      if (!field) return;
+      button?.setInstant(true);
+      beginEnhance(field);
+    });
 
     async function handleDismiss(
       choice: 'session' | 'site' | 'everywhere',

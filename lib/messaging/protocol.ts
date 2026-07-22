@@ -21,6 +21,13 @@ import type {
 
 export const ENHANCE_PORT = 'promptamp:enhance';
 
+/**
+ * Worker → content script. The keyboard shortcut and the context menu both
+ * arrive at the worker, which has no DOM — the content script owns the focused
+ * field, so the trigger has to be forwarded to it.
+ */
+export const TRIGGER_ENHANCE = 'promptamp:trigger-enhance';
+
 /* ------------------------------- errors -------------------------------- */
 
 /**
