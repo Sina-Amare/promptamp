@@ -18,6 +18,7 @@ web-ext-artifacts/
 playwright-report/
 test-results/
 coverage/
+playground/dist/
 
 # ── Logs & caches ───────────────────────────────────────
 logs/

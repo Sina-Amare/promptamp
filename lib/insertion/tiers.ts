@@ -96,6 +96,13 @@ export function insertIntoContentEditable(
     el.focus();
     selectAllIn(el);
 
+    // One call first: most rich editors, Quill included, split embedded
+    // newlines into their own block structure correctly. Only fall back to
+    // driving paragraphs by hand when the editor rejects that, because
+    // `insertParagraph` is refused by more editors than `insertText` is.
+    if (document.execCommand('insertText', false, text)) return true;
+
+    selectAllIn(el);
     const lines = text.split('\n');
     for (const [index, line] of lines.entries()) {
       if (index > 0 && !document.execCommand('insertParagraph')) return false;

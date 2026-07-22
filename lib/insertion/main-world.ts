@@ -27,7 +27,12 @@ export function mainWorldInsertFunction(text: string): boolean {
   // The DOM node carries a `cmView` back-reference to its EditorView.
   const cmHost = active.closest('.cm-editor') ?? active.closest('.cm-content');
   if (cmHost) {
-    const view = findCodeMirrorView(cmHost);
+    // Search from the focused node *and* the content node: CodeMirror hangs
+    // its view off `.cm-content`, which is a child of `.cm-editor` — walking
+    // up from the editor root alone never reaches it.
+    const view =
+      findCodeMirrorView(active) ??
+      findCodeMirrorView(cmHost.querySelector('.cm-content') ?? cmHost);
     if (view) {
       try {
         view.dispatch({
@@ -65,17 +70,35 @@ export function mainWorldInsertFunction(text: string): boolean {
 
   return false;
 
+  /**
+   * CodeMirror attaches its view to the DOM under an internal property whose
+   * name has changed across releases (`cmView` in early 6.x, `cmTile` by
+   * 6.0.2), and the view may sit one level down under `.view`. Rather than
+   * hard-coding a name that breaks on the next release, this looks for the
+   * *shape* — anything exposing `dispatch` plus `state.doc` is the view.
+   */
   function findCodeMirrorView(node: Element): CodeMirrorView | null {
     let current: Element | null = node;
     while (current) {
-      const view = (current as { cmView?: { view?: CodeMirrorView } }).cmView
-        ?.view;
-      if (view?.dispatch) return view;
+      for (const key of Object.keys(current)) {
+        if (!key.startsWith('cm') && key !== 'CodeMirror') continue;
+        const value = (current as unknown as Record<string, unknown>)[key];
+        const candidate =
+          asView(value) ?? asView((value as { view?: unknown })?.view);
+        if (candidate) return candidate;
+      }
       current = current.parentElement;
     }
-    // Some builds expose the view on the wrapper instead.
-    const wrapper = node as { CodeMirror?: CodeMirrorView };
-    return wrapper.CodeMirror?.dispatch ? wrapper.CodeMirror : null;
+    return null;
+  }
+
+  function asView(value: unknown): CodeMirrorView | null {
+    if (typeof value !== 'object' || value === null) return null;
+    const maybe = value as Partial<CodeMirrorView>;
+    return typeof maybe.dispatch === 'function' &&
+      typeof maybe.state?.doc?.length === 'number'
+      ? (maybe as CodeMirrorView)
+      : null;
   }
 }
 

@@ -36,7 +36,7 @@ export default tseslint.config(
       'dist/**',
       'playwright-report/**',
       'test-results/**',
-      'playground/vendor/**',
+      'playground/dist/**',
     ],
   },
 

@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PromptAmp Playground</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>PromptAmp playground</h1>
+      <p>
+        Every editor family the insertion engine has to survive, plus each
+        qualification gate. Offline, deterministic, no CDN.
+      </p>
+    </header>
+
+    <main>
+      <!-- ── Tier 1: plain value fields ─────────────────────────── -->
+      <section data-tier="1">
+        <h2>Tier 1 · plain value fields</h2>
+
+        <article>
+          <label for="plain-textarea">Plain textarea</label>
+          <textarea
+            id="plain-textarea"
+            data-testid="plain-textarea"
+            rows="4"
+            placeholder="Write a draft…"
+          ></textarea>
+        </article>
+
+        <article>
+          <label for="rtl-textarea">RTL textarea (Persian)</label>
+          <textarea
+            id="rtl-textarea"
+            data-testid="rtl-textarea"
+            dir="rtl"
+            rows="4"
+            placeholder="یک پیش‌نویس بنویسید…"
+          ></textarea>
+        </article>
+
+        <article>
+          <label for="react-textarea">React controlled textarea</label>
+          <!-- The classic "text appears then vanishes" case: React's instance
+               value setter shadows the prototype's. -->
+          <div id="react-root"></div>
+        </article>
+      </section>
+
+      <!-- ── Tier 2: contenteditable ────────────────────────────── -->
+      <section data-tier="2">
+        <h2>Tier 2 · contenteditable</h2>
+
+        <article>
+          <label id="plain-ce-label">Plain contenteditable</label>
+          <div
+            id="plain-contenteditable"
+            data-testid="plain-contenteditable"
+            contenteditable="true"
+            role="textbox"
+            aria-multiline="true"
+            aria-labelledby="plain-ce-label"
+          ></div>
+        </article>
+
+        <article>
+          <label id="quill-label">Quill</label>
+          <div id="quill-host" data-testid="quill-host"></div>
+        </article>
+      </section>
+
+      <!-- ── Tier 3: beforeinput / paste driven ─────────────────── -->
+      <section data-tier="3">
+        <h2>Tier 3 · beforeinput &amp; paste driven</h2>
+
+        <article>
+          <label id="lexical-label">Lexical</label>
+          <div id="lexical-host" data-testid="lexical-host"></div>
+        </article>
+      </section>
+
+      <!-- ── Tier 4: internal model, MAIN world only ────────────── -->
+      <section data-tier="4">
+        <h2>Tier 4 · internal model (MAIN world)</h2>
+
+        <article>
+          <label id="cm-label">CodeMirror 6</label>
+          <div id="codemirror-host" data-testid="codemirror-host"></div>
+        </article>
+      </section>
+
+      <!-- ── Qualification gates ────────────────────────────────── -->
+      <section data-tier="gates">
+        <h2>Gates · the button must NOT appear</h2>
+
+        <article>
+          <label for="tiny-textarea">Too small (below 40×200)</label>
+          <textarea
+            id="tiny-textarea"
+            data-testid="tiny-textarea"
+            class="tiny"
+          ></textarea>
+        </article>
+
+        <article>
+          <label for="optout-textarea">Opted out via data-promptamp</label>
+          <textarea
+            id="optout-textarea"
+            data-testid="optout-textarea"
+            data-promptamp="false"
+            rows="4"
+          ></textarea>
+        </article>
+
+        <article>
+          <label for="gramm-textarea">Opted out via data-gramm</label>
+          <textarea
+            id="gramm-textarea"
+            data-testid="gramm-textarea"
+            data-gramm="false"
+            rows="4"
+          ></textarea>
+        </article>
+
+        <article>
+          <label for="password-input">Password field</label>
+          <input
+            id="password-input"
+            data-testid="password-input"
+            type="password"
+            autocomplete="new-password"
+          />
+        </article>
+
+        <article>
+          <label for="search-input">Search field</label>
+          <input id="search-input" data-testid="search-input" type="search" />
+        </article>
+      </section>
+
+      <!-- ── Hostile containers ─────────────────────────────────── -->
+      <section data-tier="containers">
+        <h2>Containers</h2>
+
+        <article>
+          <label>Inside an open shadow root</label>
+          <div id="shadow-host" data-testid="shadow-host"></div>
+        </article>
+
+        <article>
+          <label>Inside a native &lt;dialog&gt; (top layer)</label>
+          <button type="button" data-testid="open-dialog">Open dialog</button>
+          <dialog id="test-dialog" data-testid="test-dialog">
+            <label for="dialog-textarea">Dialog textarea</label>
+            <textarea
+              id="dialog-textarea"
+              data-testid="dialog-textarea"
+              rows="4"
+            ></textarea>
+            <button type="button" data-testid="close-dialog">Close</button>
+          </dialog>
+        </article>
+
+        <article>
+          <label for="overlap-textarea">Send button in the corner</label>
+          <!-- Collision detection must flip the button off this corner. -->
+          <div class="composer">
+            <textarea
+              id="overlap-textarea"
+              data-testid="overlap-textarea"
+              rows="4"
+            ></textarea>
+            <button type="button" class="send" data-testid="send-button">
+              Send
+            </button>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

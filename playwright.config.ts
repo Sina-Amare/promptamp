@@ -15,7 +15,16 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 5_000 },
   use: {
+    baseURL: 'http://localhost:5174',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
+  },
+  // The playground is a *host page*, so it is served by plain Vite rather than
+  // going through WXT — it has to look like any other site on the web.
+  webServer: {
+    command: 'pnpm exec vite --config playground/vite.config.ts',
+    url: 'http://localhost:5174',
+    reuseExistingServer: !process.env.CI,
+    timeout: 60_000,
   },
 });

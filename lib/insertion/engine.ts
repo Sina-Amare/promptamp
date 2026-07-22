@@ -103,6 +103,11 @@ export async function insertText(
     const ran = await runTier(tier, el, text, options);
     if (!ran) continue;
 
+    // Rich editors commit to their model asynchronously — Quill and Lexical
+    // both reconcile in a microtask or animation frame. Verifying in the same
+    // synchronous turn reads the *pre-update* state and wrongly escalates.
+    await settle();
+
     const ok = verify(el, text);
     attempts.push({
       tier,
@@ -139,6 +144,26 @@ export async function insertText(
     clipboardFallback: copied,
     undoLost: false,
   };
+}
+
+/**
+ * Yield long enough for an editor to reconcile. A rendered frame covers both
+ * microtask-based (Lexical) and rAF-based (Quill, CodeMirror) commits; the
+ * timeout is the fallback for a backgrounded tab, where rAF never fires.
+ */
+function settle(): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (): void => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    globalThis.requestAnimationFrame?.(() => {
+      setTimeout(finish, 0);
+    });
+    setTimeout(finish, 50);
+  });
 }
 
 async function runTier(

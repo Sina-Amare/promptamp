@@ -1,0 +1,172 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1a1a21;
+  --muted: #5c5c66;
+  --border: rgba(0, 0, 0, 0.14);
+  --surface: #f6f6f9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c22;
+    --fg: #ededf2;
+    --muted: #a2a2ae;
+    --border: rgba(255, 255, 255, 0.16);
+    --surface: #26262e;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 32px 24px 96px;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    15px/1.55 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+header {
+  max-width: 720px;
+  margin: 0 auto 32px;
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+
+header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  display: grid;
+  gap: 32px;
+}
+
+section {
+  display: grid;
+  gap: 16px;
+}
+
+h2 {
+  margin: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+article {
+  display: grid;
+  gap: 6px;
+}
+
+label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+textarea,
+input,
+[contenteditable='true'],
+.ql-container,
+.cm-editor {
+  width: 100%;
+  min-height: 120px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+
+input {
+  min-height: 0;
+}
+
+textarea.tiny {
+  width: 150px;
+  min-height: 24px;
+  height: 24px;
+  resize: none;
+}
+
+/* Quill and CodeMirror bring their own frames. */
+.ql-container,
+.cm-editor {
+  padding: 0;
+}
+
+.ql-editor,
+.cm-content {
+  min-height: 120px;
+}
+
+.lexical-editor {
+  outline: none;
+}
+
+/* A send button parked exactly where the PromptAmp button wants to sit. */
+.composer {
+  position: relative;
+}
+
+.composer .send {
+  position: absolute;
+  inset-inline-end: 8px;
+  inset-block-end: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: var(--fg);
+  color: var(--bg);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+dialog {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--fg);
+  min-width: 420px;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.4);
+}
+
+button[data-testid='open-dialog'],
+button[data-testid='close-dialog'] {
+  justify-self: start;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}

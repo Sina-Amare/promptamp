@@ -152,6 +152,10 @@ export function verifyInsertedLoose(
     text
       .replace(/\r\n/g, '\n')
       .replace(/[ \t]+$/gm, '')
+      // Block-level editors render each paragraph as its own element, so
+      // innerText reports a blank line between them. That is correct output,
+      // not a mismatch — collapse it before comparing.
+      .replace(/\n{2,}/g, '\n')
       .trim();
   return normalize(readValue(el)) === normalize(expected);
 }

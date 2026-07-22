@@ -187,12 +187,25 @@ export function isLargeEnough(el: Element): boolean {
   return rect.height >= MIN_FIELD_HEIGHT && rect.width >= MIN_FIELD_WIDTH;
 }
 
+/**
+ * A field the site has locked. `readOnly` still accepts a programmatic write —
+ * it only blocks the user — so nothing else stops us from replacing text in a
+ * field the site deliberately made uneditable. Gate it explicitly.
+ */
+export function isLocked(el: Element): boolean {
+  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
+    if (el.readOnly || el.disabled) return true;
+  }
+  return el.closest('[contenteditable="false"]') !== null;
+}
+
 /** Every gate from UX-SPEC §1.1, in the order that fails cheapest first. */
 export function qualifies(el: Element | null): el is HTMLElement {
   if (!isEditable(el)) return false;
   // Single-line inputs are excluded: a rewrite affordance on a one-line box is
   // noise, and `input` is only reached here when it is not a blocked type.
   if (isEditableInput(el)) return false;
+  if (isLocked(el)) return false;
   if (isOptedOut(el)) return false;
   return isLargeEnough(el);
 }
