@@ -5,6 +5,7 @@ import { estimateCostUsd, formatCostUsd, rateFor } from '../lib/providers/cost';
 import {
   ProviderError,
   backoffMs,
+  errorFor,
   mapStatus,
   parseRetryAfter,
   toSafeError,
@@ -176,9 +177,36 @@ describe('error mapping', () => {
     [500, '', 'network'],
     [503, '', 'network'],
     [400, 'context length exceeded', 'too-long'],
+    // The route comes from our own registry, so a 404 here is the model name.
+    [404, '', 'bad-model'],
+    [400, 'The model `gpt-9` does not exist', 'bad-model'],
+    // Length wins over the model mention — it is the more specific fix.
+    [400, 'model context length exceeded', 'too-long'],
     [418, '', 'unknown'],
   ])('maps %i to %s', (status, body, expected) => {
     expect(mapStatus(status, body)).toBe(expected);
+  });
+
+  it('names the fix, not just the fault, on every actionable failure', () => {
+    // An error that diagnoses without prescribing still leaves a user stuck.
+    for (const kind of [
+      'bad-key',
+      'bad-model',
+      'rate-limited',
+      'quota',
+      'network',
+      'too-long',
+      'soft-cap',
+    ] as const) {
+      expect(errorFor(kind).toSafeError().remedy).toBeTruthy();
+    }
+  });
+
+  it('offers no remedy where there is no honest next step', () => {
+    // A refusal is the model's call and a cancel was the user's own doing;
+    // filler advice costs a read to discover it does not help.
+    expect(errorFor('refusal').toSafeError().remedy).toBeUndefined();
+    expect(errorFor('cancelled').toSafeError().remedy).toBeUndefined();
   });
 
   it('parses Retry-After given as seconds', () => {

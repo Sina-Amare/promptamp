@@ -1,7 +1,11 @@
 import { browser, defineBackground } from '#imports';
 import { builtinProfile } from '../lib/enhance/prompts';
 import { listProfiles, resolveProfile } from '../lib/enhance/resolve';
-import { runEnhancement, toSafeError } from '../lib/enhance/run';
+import {
+  runEnhancement,
+  safeErrorForEnhancement,
+  toSafeError,
+} from '../lib/enhance/run';
 import { mainWorldInsertFunction } from '../lib/insertion/main-world';
 import {
   ENHANCE_PORT,
@@ -11,13 +15,13 @@ import {
   type EnhanceServerMessage,
   type Request,
 } from '../lib/messaging/protocol';
-import { getProvider, listModels, testProvider } from '../lib/providers';
+import { getProvider, listModels, testConnection } from '../lib/providers';
 import { connectOpenRouter } from '../lib/providers/oauth-openrouter';
 import {
-  deleteCredential,
-  getCredential,
-  listConfiguredProviders,
-  setCredential,
+  deleteConnection,
+  publicConnections,
+  reorderConnections,
+  saveConnection,
 } from '../lib/storage/credentials';
 import {
   customProfilesItem,
@@ -93,6 +97,11 @@ export default defineBackground(() => {
         onChunk: (delta) => {
           post({ type: 'chunk', text: delta });
         },
+        // A fallback took over mid-stream: what the panel has revealed so far
+        // belongs to a different answer and must be thrown away.
+        onReset: () => {
+          post({ type: 'reset' });
+        },
       })
         .then((result) => {
           finished = true;
@@ -102,7 +111,7 @@ export default defineBackground(() => {
           finished = true;
           // Every failure is mapped and redacted before it crosses back — a
           // raw provider message can echo the API key.
-          post({ type: 'error', error: toSafeError(error) });
+          post({ type: 'error', error: safeErrorForEnhancement(error) });
         });
     });
   });
@@ -223,8 +232,8 @@ async function handle(
       return { profile, auto };
     }
 
-    case 'provider:test':
-      return testProvider(message.providerId);
+    case 'connection:test':
+      return testConnection(message.connectionId);
 
     case 'history:list':
       return getHistory();
@@ -248,62 +257,42 @@ async function handle(
 
     /* ---- options page ---- */
 
-    case 'providers:list':
-      return listConfiguredProviders();
+    case 'connections:list':
+      return publicConnections();
 
-    case 'provider:save': {
-      const existing = await getCredential(message.providerId);
-      await setCredential(message.providerId, {
-        // An empty key means "leave the saved one alone" — the options page
-        // renders a masked field and never round-trips the real value.
-        ...(message.apiKey
-          ? { apiKey: message.apiKey }
-          : existing?.apiKey
-            ? { apiKey: existing.apiKey }
-            : {}),
-        model: message.model,
-        ...(message.baseUrl ? { baseUrl: message.baseUrl } : {}),
-        authMethod: existing?.authMethod ?? 'manual',
-        addedAt: existing?.addedAt ?? Date.now(),
-      });
-      // First provider configured becomes the active one, so a new user is not
-      // left with a working key and nothing selected.
-      const settings = await getSettings();
-      if (!settings.activeProviderId) {
-        await patchSettings({ activeProviderId: message.providerId });
-      }
-      return undefined;
+    case 'connection:save': {
+      // `saveConnection` merges an omitted key with the stored one — the
+      // options page renders a masked field and never round-trips the value.
+      await saveConnection(message.connection);
+      return await publicConnections();
     }
 
-    case 'provider:delete': {
-      await deleteCredential(message.providerId);
-      const settings = await getSettings();
-      if (settings.activeProviderId === message.providerId) {
-        const remaining = await listConfiguredProviders();
-        await patchSettings({
-          activeProviderId: remaining[0]?.providerId ?? null,
-        });
-      }
-      return undefined;
+    case 'connection:delete': {
+      await deleteConnection(message.connectionId);
+      return await publicConnections();
     }
 
-    case 'provider:models':
-      return listModels(message.providerId);
+    case 'connections:reorder': {
+      await reorderConnections(message.ids);
+      return await publicConnections();
+    }
 
-    case 'provider:connectOpenRouter': {
+    case 'connection:models':
+      return listModels(message.connectionId);
+
+    case 'connection:connectOpenRouter': {
       try {
         const key = await connectOpenRouter();
-        await setCredential('openrouter', {
+        const id = crypto.randomUUID();
+        await saveConnection({
+          id,
+          providerId: 'openrouter',
+          label: 'OpenRouter',
           apiKey: key,
           model: getProvider('openrouter').defaultModel,
           authMethod: 'oauth',
-          addedAt: Date.now(),
         });
-        const settings = await getSettings();
-        if (!settings.activeProviderId) {
-          await patchSettings({ activeProviderId: 'openrouter' });
-        }
-        return await testProvider('openrouter');
+        return await testConnection(id);
       } catch (error) {
         return { ok: false, error: toSafeError(error) };
       }

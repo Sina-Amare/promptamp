@@ -358,6 +358,45 @@ export const PANEL_CSS = `
   font-size: 13px;
 }
 
+/* The fix. Given the same weight as the diagnosis, because it is the half the
+   user is actually looking for. */
+.pa-remedy {
+  padding: var(--ph-space-2) var(--ph-space-3);
+  border-inline-start: 2px solid var(--ph-accent);
+  border-radius: 0 var(--ph-radius-chip) var(--ph-radius-chip) 0;
+  background: var(--ph-surface-raised);
+  color: var(--ph-text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* One line per connection that was tried, so three different failures stay
+   three different failures. */
+.pa-attempts {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ph-text-muted);
+  font-size: 11px;
+}
+
+.pa-attempts li {
+  display: flex;
+  gap: var(--ph-space-2);
+}
+
+.pa-attempt-label {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  color: var(--ph-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
 .pa-error-actions {
   display: flex;
   gap: var(--ph-space-2);

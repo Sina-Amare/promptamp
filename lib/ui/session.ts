@@ -171,6 +171,14 @@ export function createSession(
           break;
         }
 
+        case 'reset':
+          // A fallback connection is starting over. Drop the partial reveal
+          // and go back to loading rather than splicing two answers.
+          stream?.cancel();
+          stream = null;
+          ensurePanel().showLoading();
+          break;
+
         case 'done':
           clearTimeout(skeletonTimer);
           // Land on the exact final text — the smooth reveal may still be a
@@ -179,6 +187,13 @@ export function createSession(
           stream = null;
           callbacks.onStateChange('idle');
           ensurePanel().showResult(message.result.text, draft);
+          // A silent switch would hide both that a key needs attention and
+          // that a different model wrote this.
+          if (message.result.fellBackFrom) {
+            ensurePanel().showNotice(
+              `${message.result.fellBackFrom.label} failed — used ${message.result.connectionLabel} instead.`,
+            );
+          }
           break;
 
         case 'error':

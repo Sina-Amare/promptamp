@@ -38,6 +38,12 @@ export const TRIGGER_ENHANCE = 'promptamp:trigger-enhance';
  */
 export type ErrorKind =
   | 'bad-key'
+  /**
+   * No model chosen, or a model the endpoint does not serve. Distinct from
+   * `bad-key` because the credential is fine and the fix is a different one —
+   * and a custom endpoint has no default worth guessing.
+   */
+  | 'bad-model'
   | 'rate-limited'
   | 'quota'
   | 'network'
@@ -51,8 +57,22 @@ export interface SafeError {
   kind: ErrorKind;
   /** Already redacted and safe to render. Never contains key material. */
   message: string;
+  /**
+   * The one concrete next step, in the user's terms. An error that names its
+   * cause but not its fix still leaves the user stuck, which is the actual
+   * complaint behind "the extension is broken".
+   */
+  remedy?: string;
   /** Seconds until a retry is worth attempting; set for `rate-limited`. */
   retryAfterSec?: number;
+  /** Which connection produced this. Only meaningful with several configured. */
+  connectionLabel?: string;
+  /**
+   * Set only when a fallback chain ran and every connection failed: what each
+   * one said, in order. Without it, three different failures collapse into one
+   * misleading message from whichever happened to be last.
+   */
+  attempts?: { label: string; kind: ErrorKind; message: string }[];
 }
 
 /* --------------------------- one-shot messages -------------------------- */
@@ -64,7 +84,7 @@ export type Request =
   | { type: 'siteRule:patch'; origin: string; patch: Partial<SiteRule> }
   | { type: 'profiles:list' }
   | { type: 'profile:resolve'; origin: string }
-  | { type: 'provider:test'; providerId: ProviderId }
+  | { type: 'connection:test'; connectionId: string }
   | { type: 'history:list' }
   | { type: 'history:clear' }
   | { type: 'session:hideOrigin'; origin: string }
@@ -78,17 +98,24 @@ export type Request =
   | { type: 'insert:mainWorld'; text: string }
   /* ---- options page ---- */
   /** Metadata only — never returns key material. */
-  | { type: 'providers:list' }
+  | { type: 'connections:list' }
   | {
-      type: 'provider:save';
-      providerId: ProviderId;
-      apiKey?: string;
-      model: string;
-      baseUrl?: string;
+      type: 'connection:save';
+      connection: {
+        id: string;
+        providerId: ProviderId;
+        label: string;
+        /** Omitted means "keep the stored key" — a blank field must not wipe it. */
+        apiKey?: string;
+        model: string;
+        baseUrl?: string;
+      };
     }
-  | { type: 'provider:delete'; providerId: ProviderId }
-  | { type: 'provider:models'; providerId: ProviderId }
-  | { type: 'provider:connectOpenRouter' }
+  | { type: 'connection:delete'; connectionId: string }
+  /** The whole chain, in the new order. */
+  | { type: 'connections:reorder'; ids: string[] }
+  | { type: 'connection:models'; connectionId: string }
+  | { type: 'connection:connectOpenRouter' }
   | { type: 'profiles:save'; profile: Profile }
   | { type: 'profiles:delete'; profileId: string }
   | { type: 'profiles:import'; json: string }
@@ -117,17 +144,18 @@ export interface ResponseMap {
   'siteRule:patch': SiteRule;
   'profiles:list': Profile[];
   'profile:resolve': ResolvedProfile;
-  'provider:test': ProviderTestResult;
+  'connection:test': ProviderTestResult;
   'history:list': HistoryEntry[];
   'history:clear': void;
   'session:hideOrigin': void;
   'session:isOriginHidden': boolean;
   'insert:mainWorld': boolean;
-  'providers:list': ConfiguredProvider[];
-  'provider:save': void;
-  'provider:delete': void;
-  'provider:models': string[];
-  'provider:connectOpenRouter': ProviderTestResult;
+  'connections:list': ConfiguredConnection[];
+  'connection:save': ConfiguredConnection[];
+  'connection:delete': ConfiguredConnection[];
+  'connections:reorder': ConfiguredConnection[];
+  'connection:models': string[];
+  'connection:connectOpenRouter': ProviderTestResult;
   'profiles:save': Profile[];
   'profiles:delete': Profile[];
   'profiles:import': { added: number; error?: string };
@@ -136,9 +164,11 @@ export interface ResponseMap {
   'history:export': string;
 }
 
-/** Safe to send to a UI: describes a configured provider without its key. */
-export interface ConfiguredProvider {
+/** Safe to send to a UI: describes a saved connection without its key. */
+export interface ConfiguredConnection {
+  id: string;
   providerId: ProviderId;
+  label: string;
   model: string;
   authMethod: 'manual' | 'oauth';
   /** So the card can render "key saved" without ever seeing the key. */
@@ -174,6 +204,13 @@ export interface EnhanceResult {
   profileId: string;
   providerId: ProviderId;
   model: string;
+  connectionLabel: string;
+  /**
+   * Set when an earlier connection failed and this one took over. The panel
+   * says so — a silent switch would hide that a key needs attention, and would
+   * also hide that the answer came from a different model than expected.
+   */
+  fellBackFrom?: { label: string; kind: ErrorKind; message: string };
   promptTokens?: number;
   completionTokens?: number;
   costUsd?: number;
@@ -183,6 +220,12 @@ export type EnhanceServerMessage =
   /** Sent immediately so the panel can render the resolved profile chip. */
   | { type: 'accepted'; profileId: string; auto: boolean }
   | { type: 'chunk'; text: string }
+  /**
+   * Discard everything streamed so far. Sent when a connection failed
+   * part-way and a fallback is starting the rewrite over — without it the
+   * panel would render the two halves spliced into one nonsense answer.
+   */
+  | { type: 'reset' }
   | { type: 'done'; result: EnhanceResult }
   | { type: 'error'; error: SafeError };
 

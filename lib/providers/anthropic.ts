@@ -33,9 +33,11 @@ interface AnthropicBody {
 export const anthropicAdapter = async (
   req: ChatRequest,
 ): Promise<ChatResponse> => {
-  const { config, cred, system, user, maxTokens, signal, onChunk } = req;
+  const { config, cred, system, user, maxTokens, signal, onChunk, maxRetries } =
+    req;
 
   if (!cred.apiKey) throw errorFor('bad-key');
+  if (!cred.model) throw errorFor('bad-model', 'No model chosen.');
 
   const streaming = onChunk !== undefined;
 
@@ -66,6 +68,7 @@ export const anthropicAdapter = async (
       signal,
     },
     config,
+    maxRetries,
   );
 
   if (streaming) return readAnthropicSse(response, onChunk);

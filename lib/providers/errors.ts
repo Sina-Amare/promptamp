@@ -22,9 +22,11 @@ export class ProviderError extends Error {
   }
 
   toSafeError(): SafeError {
+    const remedy = REMEDIES[this.kind];
     return {
       kind: this.kind,
       message: redactKeys(this.message),
+      ...(remedy ? { remedy } : {}),
       ...(this.retryAfterSec === undefined
         ? {}
         : { retryAfterSec: this.retryAfterSec }),
@@ -34,7 +36,8 @@ export class ProviderError extends Error {
 
 /** Human-readable text per kind. The panel renders these verbatim. */
 const MESSAGES: Record<ErrorKind, string> = {
-  'bad-key': 'That API key was rejected. Check it in PromptAmp settings.',
+  'bad-key': 'That API key was rejected.',
+  'bad-model': 'That model is not available on this connection.',
   'rate-limited': 'Rate limited by the provider.',
   quota: 'This API key is out of quota or credit.',
   network: "Couldn't reach the provider — draft unchanged.",
@@ -45,9 +48,41 @@ const MESSAGES: Record<ErrorKind, string> = {
   unknown: 'The enhancement failed — draft unchanged.',
 };
 
+/**
+ * The fix, not just the diagnosis.
+ *
+ * Each of these names one action the user can actually take from where they
+ * are standing. Kinds with no honest next step (a cancel they performed
+ * themselves, a refusal that is the model's decision to make) get none rather
+ * than filler — a remedy that does not help is worse than silence, because it
+ * costs a read to discover that.
+ */
+const REMEDIES: Partial<Record<ErrorKind, string>> = {
+  'bad-key':
+    'Open PromptAmp settings and re-paste the key for this connection — keys are usually rejected because of a stray space, a revoked key, or a key from a different provider.',
+  'bad-model':
+    'Open PromptAmp settings, press “Load models” on this connection, and pick one from the list — model names differ between providers and change over time.',
+  'rate-limited':
+    'Wait for the limit to reset, or add a second connection in settings so PromptAmp can fall back to it automatically.',
+  quota:
+    'Top up or switch plans with this provider, or add another connection in settings and PromptAmp will use it when this one runs dry.',
+  network:
+    'Check your internet connection. If you are using a local model, confirm the server is running and that PromptAmp has permission to reach that address.',
+  'too-long':
+    'Shorten the draft, or select just the part you want rewritten before enhancing.',
+  'soft-cap': 'Raise or turn off the daily limit under Behavior in settings.',
+  unknown:
+    'Try again. If it keeps happening, use Test on the connection in settings to find out which part of the setup is failing.',
+};
+
 export function errorFor(kind: ErrorKind, detail?: string): ProviderError {
   const base = MESSAGES[kind];
   return new ProviderError(kind, detail ? `${base} ${detail}` : base);
+}
+
+/** Exposed for the chain summary, which builds a SafeError from parts. */
+export function remedyFor(kind: ErrorKind): string | undefined {
+  return REMEDIES[kind];
 }
 
 /**
@@ -70,6 +105,10 @@ export function mapStatus(status: number, body: string): ErrorKind {
   if (status >= 500) return 'network';
   if (status === 400 && /context|too long|max.*token/i.test(body))
     return 'too-long';
+  // A 404 on a chat endpoint is almost always the model name, not the route —
+  // the route came from our own registry. Some servers say it with a 400.
+  if (status === 404) return 'bad-model';
+  if (status === 400 && /model/i.test(body)) return 'bad-model';
   return 'unknown';
 }
 

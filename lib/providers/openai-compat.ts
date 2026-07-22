@@ -65,9 +65,11 @@ export function endpointFor(
 export const openaiCompatAdapter = async (
   req: ChatRequest,
 ): Promise<ChatResponse> => {
-  const { config, cred, system, user, maxTokens, signal, onChunk } = req;
+  const { config, cred, system, user, maxTokens, signal, onChunk, maxRetries } =
+    req;
 
   if (config.requiresKey && !cred.apiKey) throw errorFor('bad-key');
+  if (!cred.model) throw errorFor('bad-model', 'No model chosen.');
 
   const streaming = onChunk !== undefined;
 
@@ -93,6 +95,7 @@ export const openaiCompatAdapter = async (
       signal,
     },
     config,
+    maxRetries,
   );
 
   if (streaming) return readSse(response, onChunk);
@@ -202,10 +205,11 @@ export async function fetchWithRetry(
   url: string,
   init: RequestInit,
   config: ProviderConfig,
+  maxRetries: number = MAX_RETRIES,
 ): Promise<Response> {
   let lastError: ProviderError | null = null;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const response = await fetch(url, init);
     if (response.ok) return response;
 
@@ -218,7 +222,7 @@ export async function fetchWithRetry(
     const kind = mapStatus(response.status, bodyText);
     const retryAfter = parseRetryAfter(response.headers.get('retry-after'));
 
-    if (kind !== 'rate-limited' || attempt === MAX_RETRIES) {
+    if (kind !== 'rate-limited' || attempt === maxRetries) {
       throw new ProviderError(
         kind,
         detailFrom(bodyText) ?? `HTTP ${String(response.status)}`,

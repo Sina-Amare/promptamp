@@ -22,6 +22,16 @@ export interface ChatRequest {
    * stops waiting on a blank panel and starts reading.
    */
   onChunk?: (delta: string) => void;
+  /**
+   * How many times to retry a 429 on this connection before giving up.
+   * Defaults to `MAX_RETRIES`.
+   *
+   * Zero is the right value when another connection is waiting behind this
+   * one: honouring a 60-second `Retry-After` twice means two minutes of
+   * spinner before a fallback that would have answered immediately. Only the
+   * last connection in a chain has nothing better to do than wait.
+   */
+  maxRetries?: number;
 }
 
 export interface ChatResponse {

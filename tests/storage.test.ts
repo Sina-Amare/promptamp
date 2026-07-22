@@ -15,11 +15,14 @@ import {
   siteRulesItem,
 } from '../lib/storage/items';
 import {
-  deleteCredential,
-  getCredential,
-  listConfiguredProviders,
+  deleteConnection,
+  getConnection,
+  listConnections,
+  migrateCredentialsV1toV2,
+  publicConnections,
   redactKeys,
-  setCredential,
+  reorderConnections,
+  saveConnection,
 } from '../lib/storage/credentials';
 import {
   type HistoryEntry,
@@ -189,39 +192,105 @@ describe('history', () => {
   });
 });
 
-describe('credentials', () => {
-  const cred = {
+describe('connections', () => {
+  const base = {
+    id: 'c1',
+    providerId: 'openai' as const,
+    label: 'OpenAI',
     apiKey: 'sk-test-abcdefghijklmnop',
     model: 'gpt-4o-mini',
     authMethod: 'manual' as const,
     addedAt: 1_700_000_000_000,
   };
 
-  it('round-trips a credential', async () => {
-    await setCredential('openai', cred);
-    expect(await getCredential('openai')).toEqual(cred);
+  it('round-trips a connection', async () => {
+    await saveConnection(base);
+    expect(await getConnection('c1')).toEqual(base);
   });
 
-  it('returns null for an unconfigured provider', async () => {
-    expect(await getCredential('groq')).toBeNull();
+  it('returns null for an unknown id', async () => {
+    expect(await getConnection('nope')).toBeNull();
   });
 
-  it('deletes without disturbing other providers', async () => {
-    await setCredential('openai', cred);
-    await setCredential('groq', { ...cred, model: 'llama-3.3-70b' });
-    await deleteCredential('openai');
+  it('keeps several keys for the same provider apart', async () => {
+    // The whole point of the model: two accounts at one provider are two
+    // connections, not one overwriting the other.
+    await saveConnection(base);
+    await saveConnection({
+      ...base,
+      id: 'c2',
+      label: 'OpenAI (work)',
+      apiKey: 'sk-test-secondaccountkey',
+    });
 
-    expect(await getCredential('openai')).toBeNull();
-    expect((await getCredential('groq'))?.model).toBe('llama-3.3-70b');
+    const all = await listConnections();
+    expect(all).toHaveLength(2);
+    expect(all.map((c) => c.label)).toEqual(['OpenAI', 'OpenAI (work)']);
+    expect(new Set(all.map((c) => c.apiKey)).size).toBe(2);
   });
 
-  it('never exposes key material when listing providers', async () => {
-    await setCredential('openai', cred);
-    const listed = await listConfiguredProviders();
+  it('keeps the stored key when a save omits it', async () => {
+    // The options page never receives a key back, so it cannot resend one —
+    // a blank field must not wipe a working credential.
+    await saveConnection(base);
+    await saveConnection({ ...base, apiKey: undefined, model: 'gpt-4o' });
+
+    const saved = await getConnection('c1');
+    expect(saved?.apiKey).toBe(base.apiKey);
+    expect(saved?.model).toBe('gpt-4o');
+  });
+
+  it('keeps an oauth connection oauth across an edit', async () => {
+    // The options page sends exactly this shape — no authMethod — so a user
+    // changing the model of a PKCE-connected account must not silently
+    // downgrade it to a pasted-key connection.
+    const { authMethod: _omitted, ...fromOptionsPage } = base;
+    await saveConnection({ ...base, authMethod: 'oauth' });
+    await saveConnection({ ...fromOptionsPage, model: 'gpt-4o' });
+
+    expect((await getConnection('c1'))?.authMethod).toBe('oauth');
+  });
+
+  it('deletes without disturbing the others', async () => {
+    await saveConnection(base);
+    await saveConnection({ ...base, id: 'c2', model: 'llama-3.3-70b' });
+    await deleteConnection('c1');
+
+    expect(await getConnection('c1')).toBeNull();
+    expect((await getConnection('c2'))?.model).toBe('llama-3.3-70b');
+  });
+
+  it('reorders, because order is the fallback order', async () => {
+    await saveConnection(base);
+    await saveConnection({ ...base, id: 'c2', label: 'Groq' });
+    await saveConnection({ ...base, id: 'c3', label: 'Custom' });
+
+    await reorderConnections(['c3', 'c1', 'c2']);
+    expect((await listConnections()).map((c) => c.id)).toEqual([
+      'c3',
+      'c1',
+      'c2',
+    ]);
+  });
+
+  it('never drops a connection the caller forgot to list', async () => {
+    // A UI that raced a save would otherwise silently delete the new entry.
+    await saveConnection(base);
+    await saveConnection({ ...base, id: 'c2', label: 'Groq' });
+
+    await reorderConnections(['c2']);
+    expect((await listConnections()).map((c) => c.id)).toEqual(['c2', 'c1']);
+  });
+
+  it('never exposes key material when listing for the UI', async () => {
+    await saveConnection(base);
+    const listed = await publicConnections();
 
     expect(listed).toEqual([
       {
+        id: 'c1',
         providerId: 'openai',
+        label: 'OpenAI',
         model: 'gpt-4o-mini',
         authMethod: 'manual',
         // The fact of a key, never the key itself.
@@ -231,14 +300,53 @@ describe('credentials', () => {
     expect(JSON.stringify(listed)).not.toContain('sk-test');
   });
 
-  it('allows a keyless credential for local runners', async () => {
-    await setCredential('ollama', {
+  it('carries every v1 credential forward, oldest first', () => {
+    // A migration that quietly returns [] deletes every key the user has.
+    const migrated = migrateCredentialsV1toV2({
+      groq: {
+        apiKey: 'gsk_second',
+        model: 'llama-3.3-70b-versatile',
+        authMethod: 'manual',
+        addedAt: 2000,
+      },
+      openai: {
+        apiKey: 'sk-first',
+        model: 'gpt-4o-mini',
+        authMethod: 'manual',
+        addedAt: 1000,
+      },
+    });
+
+    expect(migrated.map((c) => c.providerId)).toEqual(['openai', 'groq']);
+    expect(migrated.map((c) => c.label)).toEqual(['OpenAI', 'Groq']);
+    expect(migrated.map((c) => c.apiKey)).toEqual(['sk-first', 'gsk_second']);
+    expect(new Set(migrated.map((c) => c.id)).size).toBe(2);
+  });
+
+  it('drops only the entries that no longer parse', () => {
+    const migrated = migrateCredentialsV1toV2({
+      openai: { apiKey: 'sk-good', model: 'gpt-4o-mini', addedAt: 1 },
+      groq: { garbage: true },
+    });
+    expect(migrated.map((c) => c.providerId)).toEqual(['openai']);
+  });
+
+  it.each([[undefined], [null], ['string'], [[]], [{}]])(
+    'survives %o as a v1 value',
+    (value) => {
+      expect(migrateCredentialsV1toV2(value)).toEqual([]);
+    },
+  );
+
+  it('allows a keyless connection for local runners', async () => {
+    await saveConnection({
+      id: 'local',
+      providerId: 'ollama',
+      label: 'Ollama',
       model: 'llama3.2',
       baseUrl: 'http://localhost:11434',
-      authMethod: 'manual',
-      addedAt: 1,
     });
-    expect((await getCredential('ollama'))?.apiKey).toBeUndefined();
+    expect((await getConnection('local'))?.apiKey).toBeUndefined();
   });
 });
 

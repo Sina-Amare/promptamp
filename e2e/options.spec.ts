@@ -20,9 +20,23 @@ async function openOptions(page: Page, extensionId: string): Promise<void> {
  * "Custom (OpenAI-compatible)" card contains the string "OpenAI" too.
  */
 function card(page: Page, title: string) {
+  // Escaped: several provider labels contain parentheses, which would
+  // otherwise be read as regex groups and match the wrong card.
+  const exact = new RegExp(`^${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
   return page.locator('.card').filter({
-    has: page.locator('.card-title', { hasText: new RegExp(`^${title}$`) }),
+    has: page.locator('.card-title', { hasText: exact }),
   });
+}
+
+/** Add a connection for `provider` and return its card. */
+async function addConnection(page: Page, provider: string, label = provider) {
+  const adder = card(page, 'Add a connection');
+  await adder.locator('select').selectOption({ label: provider });
+  await adder.getByRole('button', { name: 'Add connection' }).click();
+
+  const target = card(page, label);
+  await expect(target).toBeVisible();
+  return target;
 }
 
 test('saves a key and never sends it back to the page', async ({
@@ -31,7 +45,7 @@ test('saves a key and never sends it back to the page', async ({
 }) => {
   await openOptions(page, extensionId);
 
-  const target = card(page, 'OpenAI');
+  const target = await addConnection(page, 'OpenAI');
   await target.locator('input[type="password"]').fill(KEY);
   await target.getByRole('button', { name: 'Save', exact: true }).click();
 
@@ -52,29 +66,104 @@ test('saves a key and never sends it back to the page', async ({
   expect(await page.content()).not.toContain(KEY);
 });
 
-test('marks the first saved provider active', async ({ page, extensionId }) => {
-  await openOptions(page, extensionId);
-
-  const target = card(page, 'Groq');
-  await target.locator('input[type="password"]').fill(KEY);
-  await target.getByRole('button', { name: 'Save', exact: true }).click();
-
-  // A user who has just added their only key should not also have to select it.
-  await expect(target.locator('.badge', { hasText: 'Active' })).toBeVisible();
-});
-
-test('removing the active provider clears it', async ({
+test('marks the first connection primary and the rest fallbacks', async ({
   page,
   extensionId,
 }) => {
   await openOptions(page, extensionId);
-  const target = card(page, 'Groq');
-  await target.locator('input[type="password"]').fill(KEY);
-  await target.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(target.locator('.badge', { hasText: 'Active' })).toBeVisible();
 
-  await target.getByRole('button', { name: 'Remove' }).click();
-  await expect(target.locator('.badge', { hasText: 'Active' })).toHaveCount(0);
+  await addConnection(page, 'Groq');
+  await expect(card(page, 'Groq').locator('.badge').first()).toHaveText(
+    'Primary',
+  );
+
+  await addConnection(page, 'OpenAI');
+  await expect(card(page, 'OpenAI').locator('.badge').first()).toHaveText(
+    'Fallback 1',
+  );
+});
+
+test('holds two keys for the same provider as separate connections', async ({
+  page,
+  extensionId,
+}) => {
+  await openOptions(page, extensionId);
+
+  await addConnection(page, 'OpenRouter');
+  // The second gets a distinguishing name automatically rather than
+  // overwriting the first.
+  await addConnection(page, 'OpenRouter', 'OpenRouter 2');
+
+  await expect(card(page, 'OpenRouter')).toBeVisible();
+  await expect(card(page, 'OpenRouter 2')).toBeVisible();
+});
+
+test('reorders the fallback chain from the keyboard', async ({
+  page,
+  extensionId,
+}) => {
+  await openOptions(page, extensionId);
+  await addConnection(page, 'Groq');
+  await addConnection(page, 'OpenAI');
+
+  // Drag-and-drop would make this unreachable without a pointer.
+  await card(page, 'OpenAI')
+    .getByRole('button', { name: /Move .* earlier/ })
+    .click();
+
+  await expect(card(page, 'OpenAI').locator('.badge').first()).toHaveText(
+    'Primary',
+  );
+  await expect(card(page, 'Groq').locator('.badge').first()).toHaveText(
+    'Fallback 1',
+  );
+
+  // And it survives a reload, because it is stored, not just rendered.
+  await page.reload();
+  await expect(card(page, 'OpenAI').locator('.badge').first()).toHaveText(
+    'Primary',
+  );
+});
+
+test('removing a connection leaves the others alone', async ({
+  page,
+  extensionId,
+}) => {
+  await openOptions(page, extensionId);
+  await addConnection(page, 'Groq');
+  await addConnection(page, 'OpenAI');
+
+  await card(page, 'Groq').getByRole('button', { name: 'Remove' }).click();
+
+  await expect(card(page, 'Groq')).toHaveCount(0);
+  await expect(card(page, 'OpenAI').locator('.badge').first()).toHaveText(
+    'Primary',
+  );
+});
+
+test('states the terms risk when one provider is used twice', async ({
+  page,
+  extensionId,
+}) => {
+  await openOptions(page, extensionId);
+  const summary = card(page, 'Connections');
+
+  await addConnection(page, 'OpenAI');
+  await expect(summary.locator('.notice')).toHaveCount(0);
+
+  await addConnection(page, 'OpenAI', 'OpenAI 2');
+  // A user should learn this here, not by having an account suspended.
+  await expect(summary.locator('.notice')).toContainText('free accounts');
+});
+
+test('explains the fallback rule where the ordering lives', async ({
+  page,
+  extensionId,
+}) => {
+  await openOptions(page, extensionId);
+  await expect(card(page, 'Connections').locator('.hint')).toContainText(
+    'fall back',
+  );
 });
 
 test('shows the Gemini training disclosure before the key field', async ({
@@ -82,17 +171,39 @@ test('shows the Gemini training disclosure before the key field', async ({
   extensionId,
 }) => {
   await openOptions(page, extensionId);
+  const target = await addConnection(page, 'Google Gemini');
   // A user needs to know this to choose, not to discover it afterwards.
-  await expect(card(page, 'Google Gemini').locator('.notice')).toContainText(
-    'improve their models',
-  );
+  await expect(target.locator('.notice')).toContainText('improve their models');
 });
 
 test('shows the Ollama origin instructions', async ({ page, extensionId }) => {
   await openOptions(page, extensionId);
-  await expect(
-    card(page, 'Ollama \\(local\\)').locator('.notice'),
-  ).toContainText('OLLAMA_ORIGINS');
+  const target = await addConnection(page, 'Ollama (local)');
+  await expect(target.locator('.notice')).toContainText('OLLAMA_ORIGINS');
+});
+
+test('offers a custom OpenAI-compatible endpoint with a base URL', async ({
+  page,
+  extensionId,
+}) => {
+  await openOptions(page, extensionId);
+  const target = await addConnection(page, 'Custom (OpenAI-compatible)');
+
+  // The whole point: any provider that speaks the OpenAI wire format.
+  await expect(target.locator('.notice')).toContainText('LiteLLM proxy');
+  await expect(target.locator('input[type="url"]')).toBeVisible();
+  await expect(target.locator('input[type="password"]')).toBeVisible();
+});
+
+test('pins named providers to their own host', async ({
+  page,
+  extensionId,
+}) => {
+  await openOptions(page, extensionId);
+  const target = await addConnection(page, 'OpenAI');
+  // A key entered under "OpenAI" must be unable to go anywhere else, so that
+  // card has no base-URL field at all.
+  await expect(target.locator('input[type="url"]')).toHaveCount(0);
 });
 
 test('forks a built-in profile without touching the original', async ({
@@ -172,30 +283,5 @@ test('history tab states that nothing leaves the device', async ({
   await page.getByRole('tab', { name: 'History' }).click();
   await expect(page.locator('.hint').first()).toContainText(
     'never uploaded anywhere',
-  );
-});
-
-test('offers a custom OpenAI-compatible endpoint with a base URL', async ({
-  page,
-  extensionId,
-}) => {
-  await openOptions(page, extensionId);
-  const target = card(page, 'Custom \\(OpenAI-compatible\\)');
-
-  // The whole point: any provider that speaks the OpenAI wire format.
-  await expect(target.locator('.notice')).toContainText('LiteLLM proxy');
-  await expect(target.locator('input[type="url"]')).toBeVisible();
-  await expect(target.locator('input[type="password"]')).toBeVisible();
-});
-
-test('pins named providers to their own host', async ({
-  page,
-  extensionId,
-}) => {
-  await openOptions(page, extensionId);
-  // A key entered under "OpenAI" must be unable to go anywhere else, so that
-  // card has no base-URL field at all.
-  await expect(card(page, 'OpenAI').locator('input[type="url"]')).toHaveCount(
-    0,
   );
 });

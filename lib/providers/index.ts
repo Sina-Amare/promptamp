@@ -1,6 +1,6 @@
 import type { ProviderTestResult } from '../messaging/protocol';
-import { getCredential } from '../storage/credentials';
-import type { ProviderCred, ProviderId } from '../storage/schemas';
+import { getConnection } from '../storage/credentials';
+import type { Connection, ProviderCred, ProviderId } from '../storage/schemas';
 import { anthropicAdapter } from './anthropic';
 import { errorFor, toSafeError } from './errors';
 import { mockAdapter } from './mock';
@@ -38,14 +38,16 @@ export async function chat(
  * The provider's own model list, so the picker shows what the key can actually
  * reach rather than a table we would have to keep current by hand.
  */
-export async function listModels(providerId: ProviderId): Promise<string[]> {
-  const config = getProvider(providerId);
-  const cred = await getCredential(providerId);
-  if (!config.modelsPath || !cred) return [];
+export async function listModels(connectionId: string): Promise<string[]> {
+  const connection = await getConnection(connectionId);
+  if (!connection) return [];
+  const config = getProvider(connection.providerId);
+  if (!config.modelsPath) return [];
 
-  const response = await fetch(endpointFor(config, cred, config.modelsPath), {
-    headers: buildHeaders(config, cred.apiKey),
-  });
+  const response = await fetch(
+    endpointFor(config, connection, config.modelsPath),
+    { headers: buildHeaders(config, connection.apiKey) },
+  );
   if (!response.ok) return [];
 
   const body = (await response.json()) as {
@@ -58,21 +60,21 @@ export async function listModels(providerId: ProviderId): Promise<string[]> {
 }
 
 /**
- * "Test key" in the options page. One token of output is enough to prove the
- * key, the host, and the model name all work — and it costs essentially
- * nothing, which matters when the user is paying to check their own setup.
+ * "Test" in the options page. One token of output is enough to prove the key,
+ * the host, and the model name all work — and it costs essentially nothing,
+ * which matters when the user is paying to check their own setup.
  */
-export async function testProvider(
-  providerId: ProviderId,
+export async function testConnection(
+  connectionId: string,
   timeoutMs = 15_000,
 ): Promise<ProviderTestResult> {
-  const cred = await getCredential(providerId);
-  const config = getProvider(providerId);
-
-  if (!cred) {
+  const connection = await getConnection(connectionId);
+  if (!connection) {
     return { ok: false, error: toSafeError(errorFor('bad-key')) };
   }
-  if (config.requiresKey && !cred.apiKey) {
+
+  const config = getProvider(connection.providerId);
+  if (config.requiresKey && !connection.apiKey) {
     return { ok: false, error: toSafeError(errorFor('bad-key')) };
   }
 
@@ -82,23 +84,28 @@ export async function testProvider(
   }, timeoutMs);
 
   try {
-    await chat(providerId, {
-      cred,
+    await chat(connection.providerId, {
+      cred: connection,
       system: 'Reply with the single word OK.',
       user: 'OK',
       maxTokens: 1,
       signal: controller.signal,
+      // A test is a diagnosis, not a delivery: waiting out a 60-second
+      // Retry-After tells the user nothing they cannot already see.
+      maxRetries: 0,
     });
-    return { ok: true, model: cred.model };
+    return { ok: true, model: connection.model };
   } catch (err) {
     const safe = toSafeError(err);
     // max_tokens: 1 legitimately truncates the reply — that still proves the
     // credential works, which is the only thing this routine is asking.
     if (safe.kind === 'too-long' || safe.kind === 'refusal') {
-      return { ok: true, model: cred.model };
+      return { ok: true, model: connection.model };
     }
     return { ok: false, error: safe };
   } finally {
     clearTimeout(timer);
   }
 }
+
+export type { Connection };

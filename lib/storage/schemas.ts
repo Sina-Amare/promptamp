@@ -70,7 +70,13 @@ export const providerCredSchema = z.object({
    * logged, never sent anywhere but the provider's own host.
    */
   apiKey: z.string().min(1).optional(),
-  model: z.string().min(1),
+  /**
+   * May be empty. A user-supplied endpoint has no default worth guessing, so
+   * "added but not yet configured" is a real state the UI has to be able to
+   * hold — the request path rejects it with a `bad-model` error that says
+   * exactly what to do.
+   */
+  model: z.string().max(200).default(''),
   /** Only local runners may override this; remote hosts come from the registry. */
   baseUrl: z.url().optional(),
   /** OpenRouter can be connected via PKCE instead of a pasted key. */
@@ -78,6 +84,26 @@ export const providerCredSchema = z.object({
   addedAt: z.number().int().nonnegative(),
 });
 export type ProviderCred = z.infer<typeof providerCredSchema>;
+
+/**
+ * One saved credential: a provider, a key, and a model.
+ *
+ * A *list* of these rather than one-per-provider, because "which model" is as
+ * much a choice as "which provider" — a user may want Groq's 70B for speed and
+ * a Claude key for hard drafts, or a free key and a paid key at the same
+ * provider. The list order is the fallback order, so the model is one concept,
+ * not two.
+ *
+ * Structurally a superset of `ProviderCred`, so it passes straight to an
+ * adapter with no mapping layer.
+ */
+export const connectionSchema = providerCredSchema.extend({
+  id: z.string().min(1).max(64),
+  providerId: providerIdSchema,
+  /** What distinguishes two connections to the same provider, in the user's words. */
+  label: z.string().min(1).max(48),
+});
+export type Connection = z.infer<typeof connectionSchema>;
 
 export const profileSchema = z.object({
   id: z.string().min(1).max(64),
@@ -103,7 +129,6 @@ export const siteRuleSchema = z.object({
 export type SiteRule = z.infer<typeof siteRuleSchema>;
 
 export const settingsSchema = z.object({
-  activeProviderId: providerIdSchema.nullable().default(null),
   defaultProfileId: z.string().min(1).max(64).default('general'),
   /** When false the user always gets `defaultProfileId`, never the site map. */
   autoProfile: z.boolean().default(true),

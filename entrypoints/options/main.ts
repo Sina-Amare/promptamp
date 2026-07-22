@@ -1,7 +1,7 @@
 import { BUILTIN_PROFILES } from '../../lib/enhance/prompts';
 import { sendMessage } from '../../lib/messaging/client';
 import { missingPermissions, requestPermission } from '../../lib/permissions';
-import type { ConfiguredProvider } from '../../lib/messaging/protocol';
+import type { ConfiguredConnection } from '../../lib/messaging/protocol';
 import { PROVIDERS, USER_FACING_PROVIDERS } from '../../lib/providers/registry';
 import { formatCostUsd } from '../../lib/providers/cost';
 import type {
@@ -131,35 +131,49 @@ const PROVIDER_NOTES: Partial<Record<ProviderId, string>> = {
     'Any endpoint that speaks the OpenAI chat-completions format: Together, Fireworks, DeepSeek, Mistral, xAI, Cerebras, Azure OpenAI, a self-hosted vLLM, or your own LiteLLM proxy. Enter the base URL and PromptAmp will ask your browser for permission to reach that host — and only that host.',
 };
 
+/**
+ * A connection is one credential: a provider, a key, and a model.
+ *
+ * The list is ordered, and the order is the fallback order — first entry runs,
+ * later entries take over when it cannot. That is why reordering is a visible
+ * control rather than a consequence of when things were added.
+ */
 async function providersTab(): Promise<HTMLElement> {
-  const configured = await sendMessage({ type: 'providers:list' });
-  const settings = await sendMessage({ type: 'settings:get' });
-  const byId = new Map(configured.map((c) => [c.providerId, c]));
+  const connections = await sendMessage({ type: 'connections:list' });
 
   const stack = el('div', { class: 'stack' });
 
   // Firefox grants host permissions only on request. Without this, a valid key
   // fails every call and looks exactly like a bad key.
   const blocked = await missingPermissions(
-    configured.map((c) => ({
+    connections.map((c) => ({
       providerId: c.providerId,
       ...(c.baseUrl === undefined ? {} : { baseUrl: c.baseUrl }),
     })),
   );
   const savedBaseUrls = new Map(
-    configured.map((c) => [c.providerId, c.baseUrl]),
+    connections.map((c) => [c.providerId, c.baseUrl]),
   );
   for (const id of blocked) {
     stack.append(permissionCard(id, savedBaseUrls.get(id)));
   }
 
-  for (const id of USER_FACING_PROVIDERS) {
-    stack.append(providerCard(id, byId.get(id), settings.activeProviderId));
-  }
+  stack.append(chainSummary(connections));
+
+  connections.forEach((connection, index) => {
+    stack.append(connectionCard(connection, index, connections));
+  });
+
+  stack.append(addConnectionCard(connections));
 
   return stack;
 }
 
+/**
+ * Firefox does not grant host permissions at install time, so a perfectly good
+ * key fails every call until the user allows the host — and the failure looks
+ * exactly like a bad key. This card is what makes the difference visible.
+ */
 function permissionCard(id: ProviderId, baseUrl?: string): HTMLElement {
   const config = PROVIDERS[id];
   const host = hostnameOf(baseUrl ?? config.baseUrl);
@@ -202,19 +216,58 @@ function hostnameOf(url: string): string {
   }
 }
 
-function providerCard(
-  id: ProviderId,
-  saved: ConfiguredProvider | undefined,
-  activeProvider: ProviderId | null,
+/**
+ * States the rule the ordering encodes, once, where the ordering is.
+ *
+ * Also the one place the multi-account question gets an honest answer. A user
+ * adding several keys at one provider deserves to know their provider's terms
+ * before they discover them by being suspended — and saying so plainly is also
+ * what keeps this feature legible as resilience rather than quota evasion.
+ */
+function chainSummary(connections: ConfiguredConnection[]): HTMLElement {
+  const sameProvider = connections.some(
+    (c, i) => connections.findIndex((o) => o.providerId === c.providerId) !== i,
+  );
+
+  return el('section', {
+    class: 'card',
+    children: [
+      el('span', { class: 'card-title', text: 'Connections' }),
+      el('p', {
+        class: 'hint',
+        text:
+          connections.length > 1
+            ? 'PromptAmp uses the first connection. If it is rate-limited, out of credit, unreachable, or its key is rejected, the next one takes over automatically and the panel tells you it switched.'
+            : 'Add a second connection and PromptAmp will fall back to it automatically when the first is rate-limited, out of credit, or unreachable.',
+      }),
+      sameProvider
+        ? el('p', {
+            class: 'notice',
+            text: 'You have more than one connection to the same provider. That is fine for separate keys you genuinely hold — a free key and a paid one, or work and personal. Most providers do prohibit creating extra free accounts to get around their limits, and enforcement is on your account, so check their terms.',
+          })
+        : null,
+    ],
+  });
+}
+
+function connectionCard(
+  connection: ConfiguredConnection,
+  index: number,
+  all: ConfiguredConnection[],
 ): HTMLElement {
-  const config = PROVIDERS[id];
+  const config = PROVIDERS[connection.providerId];
   const status = el('p', { class: 'status' });
 
-  if (flash?.cardTitle === config.label) {
+  if (flash?.cardTitle === connection.id) {
     status.textContent = flash.text;
     status.className = `status ${flash.kind}`;
     flash = null;
   }
+
+  const labelInput = el('input', {
+    attrs: { type: 'text', maxlength: '48', spellcheck: 'false' },
+  });
+  labelInput.value = connection.label;
 
   const keyInput = el('input', {
     attrs: {
@@ -222,21 +275,27 @@ function providerCard(
       autocomplete: 'off',
       spellcheck: 'false',
       // The saved key is never sent back to this page — only the fact of it.
-      placeholder: saved?.hasKey ? '•••••••• saved' : 'Paste your API key',
+      placeholder: connection.hasKey ? '•••••••• saved' : 'Paste your API key',
     },
   });
 
   const modelInput = el('input', {
-    attrs: { type: 'text', list: `${id}-models`, spellcheck: 'false' },
+    attrs: {
+      type: 'text',
+      list: `${connection.id}-models`,
+      spellcheck: 'false',
+    },
   });
-  modelInput.value = saved?.model ?? config.defaultModel;
+  modelInput.value = connection.model;
 
-  const modelList = el('datalist', { attrs: { id: `${id}-models` } });
+  const modelList = el('datalist', {
+    attrs: { id: `${connection.id}-models` },
+  });
 
   const baseUrlInput = el('input', {
     attrs: { type: 'url', placeholder: config.baseUrl, spellcheck: 'false' },
   });
-  if (saved?.baseUrl) baseUrlInput.value = saved.baseUrl;
+  if (connection.baseUrl) baseUrlInput.value = connection.baseUrl;
 
   const setStatus = (text: string, kind: '' | 'ok' | 'err'): void => {
     status.textContent = text;
@@ -255,7 +314,10 @@ function providerCard(
       // A user-supplied host is not covered by the manifest, so ask for it
       // here — inside the click, which is the only place Firefox allows it.
       if (config.allowsCustomBaseUrl && baseUrlInput.value.trim()) {
-        const granted = await requestPermission(id, baseUrlInput.value.trim());
+        const granted = await requestPermission(
+          connection.providerId,
+          baseUrlInput.value.trim(),
+        );
         if (!granted) {
           setStatus(
             'Saved, but your browser declined access to that host — requests will fail until you allow it.',
@@ -265,18 +327,23 @@ function providerCard(
       }
 
       await sendMessage({
-        type: 'provider:save',
-        providerId: id,
-        ...(keyInput.value ? { apiKey: keyInput.value } : {}),
-        model: modelInput.value.trim() || config.defaultModel,
-        ...(config.allowsCustomBaseUrl && baseUrlInput.value
-          ? { baseUrl: baseUrlInput.value.trim() }
-          : {}),
+        type: 'connection:save',
+        connection: {
+          id: connection.id,
+          providerId: connection.providerId,
+          label: labelInput.value.trim() || config.label,
+          // An empty field means "keep the stored key", never "erase it".
+          ...(keyInput.value ? { apiKey: keyInput.value } : {}),
+          model: modelInput.value.trim() || config.defaultModel,
+          ...(config.allowsCustomBaseUrl && baseUrlInput.value
+            ? { baseUrl: baseUrlInput.value.trim() }
+            : {}),
+        },
       });
       keyInput.value = '';
       // Survives the rebuild below, which is what actually shows the user
       // their key was stored.
-      flash = { cardTitle: config.label, text: 'Saved', kind: 'ok' };
+      flash = { cardTitle: connection.id, text: 'Saved', kind: 'ok' };
       await renderPanel();
     })();
   });
@@ -290,13 +357,15 @@ function providerCard(
     void (async () => {
       setStatus('Testing…', '');
       const result = await sendMessage({
-        type: 'provider:test',
-        providerId: id,
+        type: 'connection:test',
+        connectionId: connection.id,
       });
       setStatus(
         result.ok
           ? `Working — ${result.model ?? 'ready'}`
-          : (result.error?.message ?? 'Failed'),
+          : [result.error?.message, result.error?.remedy]
+              .filter(Boolean)
+              .join(' '),
         result.ok ? 'ok' : 'err',
       );
     })();
@@ -311,8 +380,8 @@ function providerCard(
     void (async () => {
       setStatus('Loading models…', '');
       const models = await sendMessage({
-        type: 'provider:models',
-        providerId: id,
+        type: 'connection:models',
+        connectionId: connection.id,
       });
       modelList.replaceChildren(
         ...models.map((m) => el('option', { attrs: { value: m } })),
@@ -326,67 +395,25 @@ function providerCard(
     })();
   });
 
-  const actions = el('div', {
-    class: 'row',
-    children: [save, test, fetchModels],
+  const remove = el('button', {
+    class: 'danger',
+    text: 'Remove',
+    attrs: { type: 'button' },
+  });
+  remove.addEventListener('click', () => {
+    void (async () => {
+      await sendMessage({
+        type: 'connection:delete',
+        connectionId: connection.id,
+      });
+      await renderPanel();
+    })();
   });
 
-  if (saved) {
-    const remove = el('button', {
-      class: 'danger',
-      text: 'Remove',
-      attrs: { type: 'button' },
-    });
-    remove.addEventListener('click', () => {
-      void (async () => {
-        await sendMessage({ type: 'provider:delete', providerId: id });
-        await renderPanel();
-      })();
-    });
-    actions.append(remove);
-
-    if (activeProvider !== id) {
-      const makeActive = el('button', {
-        class: 'secondary',
-        text: 'Use this provider',
-        attrs: { type: 'button' },
-      });
-      makeActive.addEventListener('click', () => {
-        void (async () => {
-          await sendMessage({
-            type: 'settings:patch',
-            patch: { activeProviderId: id },
-          });
-          await renderPanel();
-        })();
-      });
-      actions.append(makeActive);
-    }
-  }
-
-  if (id === 'openrouter') {
-    const connect = el('button', {
-      class: 'secondary',
-      text: 'Connect with OpenRouter',
-      attrs: { type: 'button' },
-    });
-    connect.addEventListener('click', () => {
-      void (async () => {
-        setStatus('Opening OpenRouter…', '');
-        const result = await sendMessage({
-          type: 'provider:connectOpenRouter',
-        });
-        setStatus(
-          result.ok ? 'Connected' : (result.error?.message ?? 'Failed'),
-          result.ok ? 'ok' : 'err',
-        );
-        if (result.ok) await renderPanel();
-      })();
-    });
-    actions.prepend(connect);
-  }
-
-  const note = PROVIDER_NOTES[id];
+  const actions = el('div', {
+    class: 'row',
+    children: [save, test, fetchModels, remove],
+  });
 
   return el('section', {
     class: 'card',
@@ -394,16 +421,27 @@ function providerCard(
       el('div', {
         class: 'card-head',
         children: [
-          el('span', { class: 'card-title', text: config.label }),
-          activeProvider === id
-            ? el('span', { class: 'badge', text: 'Active' })
-            : null,
-          saved?.authMethod === 'oauth'
+          el('span', { class: 'card-title', text: connection.label }),
+          el('span', {
+            class: index === 0 ? 'badge' : 'badge muted',
+            text: index === 0 ? 'Primary' : `Fallback ${String(index)}`,
+          }),
+          connection.authMethod === 'oauth'
             ? el('span', { class: 'badge muted', text: 'Connected' })
             : null,
+          reorderControls(connection, index, all),
         ],
       }),
-      note ? el('p', { class: 'notice', text: note }) : null,
+      el('p', { class: 'hint', text: `${config.label} · ${connection.model}` }),
+      PROVIDER_NOTES[connection.providerId]
+        ? el('p', {
+            class: 'notice',
+            text: PROVIDER_NOTES[connection.providerId]!,
+          })
+        : null,
+      el('label', {
+        children: [el('span', { text: 'Name' }), labelInput],
+      }),
       config.requiresKey || config.keyOptional
         ? el('label', {
             children: [
@@ -437,20 +475,147 @@ function providerCard(
         ? el('p', {
             class: 'hint',
             children: [
-              (() => {
-                const link = el('a', {
-                  text: `Get a ${config.label} key →`,
-                  attrs: {
-                    href: config.setupUrl,
-                    target: '_blank',
-                    rel: 'noreferrer',
-                  },
-                });
-                return link;
-              })(),
+              el('a', {
+                text: `Get a ${config.label} key →`,
+                attrs: {
+                  href: config.setupUrl,
+                  target: '_blank',
+                  rel: 'noreferrer',
+                },
+              }),
             ],
           })
         : null,
+    ],
+  });
+}
+
+/**
+ * Buttons rather than drag-and-drop. Reordering a three-item list is not worth
+ * a pointer-only interaction that a keyboard or screen-reader user cannot
+ * perform at all.
+ */
+function reorderControls(
+  connection: ConfiguredConnection,
+  index: number,
+  all: ConfiguredConnection[],
+): HTMLElement {
+  const move = (delta: number): void => {
+    void (async () => {
+      const ids = all.map((c) => c.id);
+      const [moved] = ids.splice(index, 1);
+      ids.splice(index + delta, 0, moved!);
+      await sendMessage({ type: 'connections:reorder', ids });
+      await renderPanel();
+    })();
+  };
+
+  const up = el('button', {
+    class: 'quiet',
+    text: '↑',
+    attrs: {
+      type: 'button',
+      title: 'Use earlier',
+      'aria-label': `Move ${connection.label} earlier in the fallback order`,
+    },
+  });
+  up.disabled = index === 0;
+  up.addEventListener('click', () => {
+    move(-1);
+  });
+
+  const down = el('button', {
+    class: 'quiet',
+    text: '↓',
+    attrs: {
+      type: 'button',
+      title: 'Use later',
+      'aria-label': `Move ${connection.label} later in the fallback order`,
+    },
+  });
+  down.disabled = index === all.length - 1;
+  down.addEventListener('click', () => {
+    move(1);
+  });
+
+  return el('div', { class: 'reorder', children: [up, down] });
+}
+
+function addConnectionCard(existing: ConfiguredConnection[]): HTMLElement {
+  const picker = el('select', {
+    attrs: { 'aria-label': 'Provider for the new connection' },
+  });
+  for (const id of USER_FACING_PROVIDERS) {
+    picker.append(
+      el('option', { text: PROVIDERS[id].label, attrs: { value: id } }),
+    );
+  }
+
+  const add = el('button', {
+    class: 'primary',
+    text: 'Add connection',
+    attrs: { type: 'button' },
+  });
+  add.addEventListener('click', () => {
+    void (async () => {
+      const providerId = picker.value as ProviderId;
+      const config = PROVIDERS[providerId];
+      // Numbered only when it would otherwise collide, so the common case of
+      // one key per provider gets a clean name.
+      const sameProvider = existing.filter(
+        (c) => c.providerId === providerId,
+      ).length;
+      await sendMessage({
+        type: 'connection:save',
+        connection: {
+          id: crypto.randomUUID(),
+          providerId,
+          label: sameProvider
+            ? `${config.label} ${String(sameProvider + 1)}`
+            : config.label,
+          model: config.defaultModel,
+        },
+      });
+      await renderPanel();
+    })();
+  });
+
+  const connect = el('button', {
+    class: 'secondary',
+    text: 'Connect with OpenRouter',
+    attrs: { type: 'button' },
+  });
+  const connectStatus = el('p', { class: 'status' });
+  connect.addEventListener('click', () => {
+    void (async () => {
+      connectStatus.textContent = 'Opening OpenRouter…';
+      connectStatus.className = 'status';
+      const result = await sendMessage({
+        type: 'connection:connectOpenRouter',
+      });
+      connectStatus.textContent = result.ok
+        ? 'Connected'
+        : (result.error?.message ?? 'Failed');
+      connectStatus.className = `status ${result.ok ? 'ok' : 'err'}`;
+      if (result.ok) await renderPanel();
+    })();
+  });
+
+  return el('section', {
+    class: 'card',
+    children: [
+      el('span', { class: 'card-title', text: 'Add a connection' }),
+      el('p', {
+        class: 'hint',
+        text: 'Each connection is one key and one model. Add as many as you like — they run in the order above.',
+      }),
+      el('div', { class: 'row', children: [picker, add] }),
+      el('p', {
+        class: 'hint',
+        text: 'Or sign in to OpenRouter without pasting a key:',
+      }),
+      el('div', { class: 'row', children: [connect] }),
+      connectStatus,
     ],
   });
 }

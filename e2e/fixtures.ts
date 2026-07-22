@@ -63,7 +63,22 @@ export const expect = test.expect;
  * reads — no test-only code path in the shipped bundle.
  */
 export async function useMockProvider(worker: Worker): Promise<void> {
-  await worker.evaluate(async () => {
+  await useMockChain(worker, ['mock-1']);
+}
+
+/**
+ * Seed a fallback chain of mock connections, one per model name.
+ *
+ * The mock adapter reads its behaviour from the model name, so
+ * `['mock-rate-limited', 'mock-1']` is a chain whose first connection always
+ * fails and whose second always answers — which is the only way to exercise
+ * failover against a provider that cannot be asked for a 429 on demand.
+ */
+export async function useMockChain(
+  worker: Worker,
+  models: string[],
+): Promise<void> {
+  await worker.evaluate(async (modelNames: string[]) => {
     // Typed loosely on purpose: this string is evaluated inside the extension
     // worker, where `chrome` exists but this file's types do not apply.
     const api = (
@@ -76,7 +91,6 @@ export async function useMockProvider(worker: Worker): Promise<void> {
 
     await api.storage.local.set({
       settings: {
-        activeProviderId: 'mock',
         defaultProfileId: 'general',
         autoProfile: true,
         globallyHidden: false,
@@ -86,12 +100,21 @@ export async function useMockProvider(worker: Worker): Promise<void> {
         historyEnabled: true,
         historyLimit: 200,
         uiLanguage: 'auto',
+        outputLanguageOverride: '',
       },
-      credentials: {
-        mock: { model: 'mock-1', authMethod: 'manual', addedAt: 0 },
-      },
+      credentials: modelNames.map((model, index) => ({
+        id: `mock-${String(index)}`,
+        providerId: 'mock',
+        label: index === 0 ? 'Mock' : `Mock fallback ${String(index)}`,
+        model,
+        authMethod: 'manual',
+        addedAt: index,
+      })),
+      // WXT stores an item's schema version alongside it. Without this the
+      // v1→v2 migration would run over an already-v2 array and wipe it.
+      credentials$: { v: 2 },
     });
-  });
+  }, models);
 }
 
 /** Reach into the extension's shadow root from a page-side selector. */

@@ -31,6 +31,7 @@ async function render(): Promise<void> {
   const origin = await currentOrigin();
   const settings = await sendMessage({ type: 'settings:get' });
   const profiles = await sendMessage({ type: 'profiles:list' });
+  const connections = await sendMessage({ type: 'connections:list' });
   const rule = origin
     ? await sendMessage({ type: 'siteRule:get', origin })
     : null;
@@ -136,7 +137,7 @@ async function render(): Promise<void> {
   // Without a provider nothing else in here can do anything, so say that
   // first rather than presenting controls that will silently do nothing.
   let setupPrompt: HTMLElement | null = null;
-  if (settings.activeProviderId === null) {
+  if (connections.length === 0) {
     setupPrompt = el('button', {
       class: 'active',
       text: 'Add an API key to get started',

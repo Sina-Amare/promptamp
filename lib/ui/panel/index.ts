@@ -509,6 +509,29 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
                 children: [alertIcon(), el('span', { text: titleFor(error) })],
               }),
               el('p', { text: error.message }),
+              // What each connection said, when several were tried. Collapsing
+              // three different failures into the last one's message sends the
+              // user to fix the wrong thing.
+              error.attempts && error.attempts.length > 1
+                ? el('ul', {
+                    class: 'pa-attempts',
+                    children: error.attempts.map((attempt) =>
+                      el('li', {
+                        children: [
+                          el('span', {
+                            class: 'pa-attempt-label',
+                            text: attempt.label,
+                          }),
+                          el('span', { text: attempt.message }),
+                        ],
+                      }),
+                    ),
+                  })
+                : null,
+              // The fix, not just the diagnosis.
+              error.remedy
+                ? el('p', { class: 'pa-remedy', text: error.remedy })
+                : null,
               el('p', {
                 class: 'pa-status',
                 text: 'Your draft is unchanged.',
@@ -600,6 +623,8 @@ function titleFor(error: SafeError): string {
   switch (error.kind) {
     case 'bad-key':
       return 'API key problem';
+    case 'bad-model':
+      return 'Model unavailable';
     case 'rate-limited':
       return 'Rate limited';
     case 'quota':

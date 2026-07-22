@@ -18,6 +18,7 @@ const DIRECTIVE = /\[\[mock:([a-z-]+)(?::(\d+))?\]\]/;
 
 const ERROR_KINDS: ReadonlySet<string> = new Set<ErrorKind>([
   'bad-key',
+  'bad-model',
   'rate-limited',
   'quota',
   'network',
@@ -30,9 +31,26 @@ const ERROR_KINDS: ReadonlySet<string> = new Set<ErrorKind>([
 /** Latency floor so the 300 ms skeleton in UX-SPEC §2.3 actually gets exercised. */
 export const MOCK_LATENCY_MS = 350;
 
+/**
+ * The same directives, but attached to the model name instead of the draft.
+ *
+ * A fallback chain needs connections that behave *differently* on one draft —
+ * the first fails, the second answers. A draft-level directive cannot express
+ * that, because every connection sees the same draft. A model named
+ * `mock-rate-limited` fails that way while `mock-1` beside it succeeds.
+ */
+const MODEL_DIRECTIVE = /^mock-([a-z-]+?)(?:-(\d+))?$/;
+
 export const mockAdapter = async (req: ChatRequest): Promise<ChatResponse> => {
-  const { user, signal } = req;
-  const directive = DIRECTIVE.exec(user);
+  const { user, signal, cred } = req;
+  const fromDraft = DIRECTIVE.exec(user);
+  const fromModel = MODEL_DIRECTIVE.exec(cred.model);
+
+  // The draft wins: an e2e test that types a directive is being explicit about
+  // this one request, whereas the model name is standing configuration.
+  const directive =
+    fromDraft ??
+    (fromModel && ERROR_KINDS.has(fromModel[1] ?? '') ? fromModel : null);
   const command = directive?.[1];
   const arg = directive?.[2];
 
