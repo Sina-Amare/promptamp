@@ -653,12 +653,15 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     // Plain Enter is reserved — the body is editable.
     if (meta && event.key === 'Enter') {
       event.preventDefault();
-      callbacks.onAccept(currentText());
+      // The shortcut obeys the same gate as the Replace button: accepting
+      // mid-stream would insert a truncated prompt (caught by the composer
+      // verification suite when the mock began streaming).
+      if (!acceptBtn.disabled) callbacks.onAccept(currentText());
       return;
     }
     if (meta && !event.shiftKey && event.key.toLowerCase() === 'r') {
       event.preventDefault();
-      callbacks.onRetry();
+      if (!retryBtn.disabled) callbacks.onRetry();
       return;
     }
     if (meta && event.shiftKey && event.key.toLowerCase() === 'c') {

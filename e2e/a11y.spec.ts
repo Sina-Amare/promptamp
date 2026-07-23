@@ -91,6 +91,9 @@ test('the whole flow is operable by keyboard alone', async ({ page }) => {
   await page.keyboard.press('Enter');
   await expect(page.locator('.pa-panel')).toBeVisible();
   await expect(page.locator('.pa-body')).not.toBeEmpty();
+  // Ctrl+Enter obeys the Replace gate: mid-stream it must do nothing (a
+  // truncated insert is worse than a beat of waiting), so wait for ready.
+  await expect(page.locator('.pa-primary')).toBeEnabled();
 
   // Accept without ever touching the mouse.
   await page.keyboard.press('ControlOrMeta+Enter');
