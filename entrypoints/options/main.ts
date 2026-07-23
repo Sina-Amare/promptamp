@@ -77,7 +77,16 @@ function renderTabs(): void {
   );
 }
 
+/** The tab currently painted — so a re-render of the *same* tab can keep the
+ * user's scroll position, while a genuine tab switch still starts at the top. */
+let renderedTab: TabId | null = null;
+
 async function renderPanel(): Promise<void> {
+  // Saving rebuilds the whole tab; without this the page snaps to the top and
+  // the user has to scroll back down to the card they were working in.
+  const sameTab = renderedTab === active;
+  const scrollY = window.scrollY;
+
   panel.replaceChildren(el('p', { class: 'empty', text: t('common.loading') }));
   switch (active) {
     case 'providers':
@@ -96,6 +105,9 @@ async function renderPanel(): Promise<void> {
       panel.replaceChildren(aboutTab());
       break;
   }
+
+  renderedTab = active;
+  if (sameTab) window.scrollTo(0, scrollY);
 }
 
 /* ── providers ──────────────────────────────────────────────────── */

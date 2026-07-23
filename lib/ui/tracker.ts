@@ -6,16 +6,19 @@ import {
 } from '../insertion/detect';
 import { isEnhanceable } from '../enhance/assemble';
 import type { ButtonCorner } from '../storage/schemas';
-import { isFieldVisible, placeButton } from './position';
+import { cornerPosition, isFieldVisible, placeButton } from './position';
 
 /**
  * Watches which field has focus and keeps the button pinned to it.
  *
  * The performance budget (UX-SPEC §0.5) is the constraint that shapes this
  * file. Grammarly measured >90% CPU from reading layout 60 times a second, and
- * a prompt box is exactly where a user is typing fast. So geometry is read
- * only on focus, input, ancestor scroll, resize, and a 1 Hz safety poll —
- * never per frame. Scroll moves the button by translation without re-measuring.
+ * a prompt box is exactly where a user is typing fast. So the *expensive* work
+ * — the placement ladder with its elementsFromPoint sampling — runs only on
+ * focus, input, resize, settle, and a 1 Hz safety poll. During active
+ * scrolling the disc glides: one getBoundingClientRect and pure corner math
+ * per frame, keeping it glued to the field with zero lag, and the full
+ * re-evaluation waits until the scroll settles.
  */
 
 export interface TrackedField {
@@ -68,6 +71,9 @@ const BLUR_GRACE_MS = 200;
 /** Safety net for layout changes no event reports. Deliberately 1 Hz, not rAF. */
 const POLL_MS = 1000;
 
+/** How long after the last scroll event the glide stops and the ladder re-runs. */
+const SCROLL_SETTLE_MS = 120;
+
 export function createFieldTracker(
   callbacks: TrackerCallbacks,
   options: TrackerOptions,
@@ -88,6 +94,9 @@ export function createFieldTracker(
   // a scroll cannot hop the disc between rungs as viewport geometry shifts —
   // it moves only when its corner genuinely stops fitting.
   let lastCorner: ReturnType<typeof placeButton>['corner'] | null = null;
+  // The scroll glide: a rAF loop alive only while scroll events stream in.
+  let scrollRaf = 0;
+  let scrollSettle: ReturnType<typeof setTimeout> | undefined;
 
   function reposition(): void {
     if (!field) return;
@@ -167,6 +176,11 @@ export function createFieldTracker(
     fieldResize?.disconnect();
     fieldResize = null;
     lastCorner = null;
+    if (scrollRaf !== 0) {
+      cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+    }
+    clearTimeout(scrollSettle);
     clearInterval(pollTimer);
     clearTimeout(typingTimer);
     field = null;
@@ -235,11 +249,39 @@ export function createFieldTracker(
     }, TYPING_IDLE_MS);
   }
 
-  // Scrolling translates the button; it never re-measures. That is the
-  // difference between a smooth page and Grammarly's CPU problem.
+  /**
+   * The per-frame glide, alive only while scroll events are streaming. Pure
+   * translation to the already-chosen corner — no ladder, no
+   * elementsFromPoint — so it is cheap enough to run every frame, and the
+   * disc can neither lag behind the composer nor hop to another corner
+   * mid-scroll.
+   */
+  function glide(): void {
+    scrollRaf = 0;
+    if (!field || !lastCorner || !field.isConnected) return;
+    const box = field.getBoundingClientRect();
+    const point = cornerPosition(
+      { top: box.top, left: box.left, width: box.width, height: box.height },
+      lastCorner,
+      direction,
+      options.buttonSize,
+    );
+    callbacks.onMove(point, lastCorner);
+    scrollRaf = requestAnimationFrame(glide);
+  }
+
   function onScroll(): void {
     if (!field) return;
-    reposition();
+    if (scrollRaf === 0) scrollRaf = requestAnimationFrame(glide);
+    clearTimeout(scrollSettle);
+    scrollSettle = setTimeout(() => {
+      if (scrollRaf !== 0) {
+        cancelAnimationFrame(scrollRaf);
+        scrollRaf = 0;
+      }
+      // One full re-evaluation (visibility, ladder, occupancy) at rest.
+      reposition();
+    }, SCROLL_SETTLE_MS);
   }
 
   function onResize(): void {

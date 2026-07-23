@@ -37,8 +37,9 @@ import { createSmoothStream, type SmoothStream } from './panel/stream';
 /** Below this a response is fast enough that showing a skeleton is noise. */
 const SKELETON_DELAY_MS = 300;
 
-/** Gmail-style transient. Long enough to notice, short enough not to linger. */
-const UNDO_WINDOW_MS = 10_000;
+/** A brief transient: enough to catch the eye and be clicked, gone before it
+ * nags. Native Ctrl+Z still works after it disappears (tier-1 insertion). */
+const UNDO_WINDOW_MS = 4_000;
 
 export interface SessionCallbacks {
   onStateChange: (state: 'loading' | 'idle' | 'done' | 'error') => void;
