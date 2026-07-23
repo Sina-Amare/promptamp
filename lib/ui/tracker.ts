@@ -83,9 +83,18 @@ export function createFieldTracker(
   let blurTimer: ReturnType<typeof setTimeout> | undefined;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   let scrollTargets: EventTarget[] = [];
+  let fieldResize: ResizeObserver | null = null;
 
   function reposition(): void {
     if (!field) return;
+
+    // React apps replace composer nodes wholesale on re-render; a tracked node
+    // that left the DOM would keep a ghost button. Detach — the next focus or
+    // pointer press re-attaches to the replacement.
+    if (!field.isConnected) {
+      detach();
+      return;
+    }
 
     if (!isFieldVisible(field)) {
       // An orphaned button floating over unrelated content is worse than no
@@ -133,6 +142,12 @@ export function createFieldTracker(
     for (const target of scrollTargets) {
       target.addEventListener('scroll', onScroll, { passive: true });
     }
+    // Chat composers grow as the draft wraps — with no scroll event fired, so
+    // without this the disc sits at the field's *old* corner until the poll.
+    fieldResize = new ResizeObserver(() => {
+      reposition();
+    });
+    fieldResize.observe(candidate);
     pollTimer = setInterval(reposition, POLL_MS);
   }
 
@@ -142,6 +157,8 @@ export function createFieldTracker(
       target.removeEventListener('scroll', onScroll);
     }
     scrollTargets = [];
+    fieldResize?.disconnect();
+    fieldResize = null;
     clearInterval(pollTimer);
     clearTimeout(typingTimer);
     field = null;
@@ -162,6 +179,18 @@ export function createFieldTracker(
       deepActiveElement(document) ?? (event.target as Element | null);
     if (qualifies(target)) attach(target);
     else if (target && !options.isOwnNode(target)) scheduleDetach();
+  }
+
+  // Some editors take focus programmatically or swap their node under a live
+  // focus, so focusin alone misses them. A press on a qualifying element is an
+  // unambiguous signal — attach right there, no waiting.
+  function onPointerDown(event: Event): void {
+    if (options.isSuppressed()) return;
+    const target = event.target as Element | null;
+    const candidate = target?.closest('textarea, input, [contenteditable]');
+    if (candidate && candidate !== field && qualifies(candidate)) {
+      attach(candidate);
+    }
   }
 
   function onFocusOut(): void {
@@ -212,6 +241,7 @@ export function createFieldTracker(
   return {
     start: () => {
       document.addEventListener('focusin', onFocusIn, true);
+      document.addEventListener('pointerdown', onPointerDown, true);
       document.addEventListener('focusout', onFocusOut, true);
       document.addEventListener('input', onInput, true);
       document.addEventListener('keydown', onKeyDown, true);
@@ -224,6 +254,7 @@ export function createFieldTracker(
     },
     stop: () => {
       document.removeEventListener('focusin', onFocusIn, true);
+      document.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('focusout', onFocusOut, true);
       document.removeEventListener('input', onInput, true);
       document.removeEventListener('keydown', onKeyDown, true);

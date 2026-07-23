@@ -50,6 +50,8 @@ export interface PanelCallbacks {
   onLanguagePick: (language: string) => void;
   /** The Structured chip — re-run the current draft as an engineered prompt. */
   onStructured: () => void;
+  /** The user started dragging the panel — anchored positioning must let go. */
+  onDragStart?: () => void;
 }
 
 export interface PanelHandle {
@@ -380,6 +382,52 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
   const head = el('div', {
     class: 'pa-head',
     children: [title, chip, langChip, carousel, closeBtn],
+  });
+
+  // The header is a drag handle: wherever the anchored placement lands on an
+  // odd composer, the user can simply put the panel where they want it. Once
+  // they do, onDragStart tells the session to stop re-anchoring it.
+  head.addEventListener('pointerdown', (event) => {
+    // Chips, arrows, and Close keep their own behaviour.
+    if ((event.target as Element).closest('button, [role="listbox"]')) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const rect = element.getBoundingClientRect();
+    let moved = false;
+
+    const onMove = (ev: PointerEvent): void => {
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 3) {
+        return; // a sloppy click is not a drag
+      }
+      if (!moved) {
+        moved = true;
+        callbacks.onDragStart?.();
+        element.setAttribute('data-dragging', 'true');
+      }
+      const width = rect.width;
+      const height = rect.height;
+      const left = Math.min(
+        Math.max(8, rect.left + ev.clientX - startX),
+        window.innerWidth - width - 8,
+      );
+      const top = Math.min(
+        Math.max(8, rect.top + ev.clientY - startY),
+        window.innerHeight - height - 8,
+      );
+      element.style.left = `${String(Math.round(left))}px`;
+      element.style.top = `${String(Math.round(top))}px`;
+    };
+    const onUp = (): void => {
+      element.removeAttribute('data-dragging');
+      head.removeEventListener('pointermove', onMove);
+      head.removeEventListener('pointerup', onUp);
+      head.removeEventListener('pointercancel', onUp);
+    };
+    head.setPointerCapture(event.pointerId);
+    head.addEventListener('pointermove', onMove);
+    head.addEventListener('pointerup', onUp);
+    head.addEventListener('pointercancel', onUp);
   });
 
   /* ── body ──────────────────────────────────────────────────────── */

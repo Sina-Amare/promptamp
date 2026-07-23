@@ -166,6 +166,12 @@ export function createSession(
         structuredOneOff = true;
         run({ profileId: 'structured' });
       },
+      // The user dragged the panel — their placement wins. Stop re-anchoring
+      // it to the field, or the next scroll would snap it back.
+      onDragStart: () => {
+        cleanupPosition?.();
+        cleanupPosition = undefined;
+      },
     });
 
     loadChips(panel);
@@ -401,7 +407,7 @@ export function createSession(
     }
 
     callbacks.onStateChange('done');
-    showUndoPill();
+    showUndoPill(text);
     close();
   }
 
@@ -410,7 +416,7 @@ export function createSession(
    * A user who has just watched their draft get replaced should not have to
    * know which undo stack they are in.
    */
-  function showUndoPill(): void {
+  function showUndoPill(inserted: string): void {
     const announce = el('span', {
       class: 'pa-sr-only',
       attrs: { role: 'status', 'aria-live': 'polite' },
@@ -444,9 +450,23 @@ export function createSession(
 
     const dismiss = (): void => {
       clearTimeout(timer);
+      clearInterval(watch);
       pill.remove();
     };
     const timer = setTimeout(dismiss, UNDO_WINDOW_MS);
+
+    // The pill is only meaningful while the inserted text is still sitting in
+    // the field. The moment it is sent (field empties), edited, or the field
+    // leaves the DOM, an Undo would restore into the wrong world — and the
+    // pill would float over whatever the site shows next. Watch and dismiss.
+    const watch = setInterval(() => {
+      if (
+        !deps.field.isConnected ||
+        readValue(deps.field).trim() !== inserted.trim()
+      ) {
+        dismiss();
+      }
+    }, 500);
 
     undo.addEventListener('click', () => {
       restoreField(deps.field, snapshot);

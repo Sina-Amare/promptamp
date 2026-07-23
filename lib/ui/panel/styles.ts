@@ -99,6 +99,14 @@ export const PANEL_CSS = `
   gap: var(--ph-space-2);
   padding: var(--ph-space-3) var(--ph-space-4);
   border-block-end: 1px solid var(--ph-border);
+  /* A drag handle: put the panel wherever suits this page. */
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.pa-panel[data-dragging='true'] .pa-head {
+  cursor: grabbing;
 }
 
 .pa-title {
@@ -159,6 +167,7 @@ export const PANEL_CSS = `
   min-inline-size: 180px;
   max-inline-size: calc(100% - 16px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--ph-space-1);
   border: 1px solid var(--ph-border);
   border-radius: var(--ph-radius-chip);
@@ -256,6 +265,10 @@ export const PANEL_CSS = `
   flex: 1;
   min-block-size: 0;
   overflow-y: auto;
+  /* Wheel events over the panel stay in the panel: without this, reaching the
+     end of this scroller chains the scroll to the host page, which reads as
+     the site scrolling by itself. */
+  overscroll-behavior: contain;
   /* Opaque: text never sits on glass. */
   background: var(--ph-surface);
 }
