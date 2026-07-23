@@ -32,6 +32,12 @@ export interface ButtonCallbacks {
   onActivate: () => void;
   onStop: () => void;
   onDismiss: (choice: DismissChoice) => void;
+  /**
+   * The user dragged the disc and released it at these viewport coordinates
+   * (the wrap's top-left). The site remembers the spot — the user is the
+   * final authority on placement.
+   */
+  onDragEnd?: (point: { top: number; left: number }) => void;
 }
 
 export interface ButtonHandle {
@@ -105,6 +111,71 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
     },
     children: [button, dismiss, tooltip],
   });
+
+  /* ── drag to place ─────────────────────────────────────────────── */
+
+  // The user is the final authority on placement: drag the disc anywhere and
+  // the site remembers the spot. A press that moves less than the threshold is
+  // a click; past it, the click is swallowed so a drop never fires an enhance.
+  const DRAG_THRESHOLD = 5;
+  let justDragged = false;
+
+  wrap.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    if ((event.target as Element).closest('.pa-dismiss, .pa-menu')) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startRect = wrap.getBoundingClientRect();
+    let dragging = false;
+
+    const onMove = (ev: PointerEvent): void => {
+      if (
+        !dragging &&
+        Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD
+      ) {
+        return;
+      }
+      if (!dragging) {
+        dragging = true;
+        wrap.setPointerCapture(event.pointerId);
+        wrap.setAttribute('data-dragging', 'true');
+      }
+      const left = Math.min(
+        Math.max(0, startRect.left + ev.clientX - startX),
+        globalThis.innerWidth - startRect.width,
+      );
+      const top = Math.min(
+        Math.max(0, startRect.top + ev.clientY - startY),
+        globalThis.innerHeight - startRect.height,
+      );
+      wrap.style.transform = `translate3d(${String(Math.round(left))}px, ${String(Math.round(top))}px, 0)`;
+    };
+    const onUp = (): void => {
+      wrap.removeEventListener('pointermove', onMove);
+      wrap.removeEventListener('pointerup', onUp);
+      wrap.removeEventListener('pointercancel', onUp);
+      if (!dragging) return;
+      wrap.removeAttribute('data-dragging');
+      justDragged = true; // swallow the click that follows the drop
+      const rect = wrap.getBoundingClientRect();
+      callbacks.onDragEnd?.({ top: rect.top, left: rect.left });
+    };
+    wrap.addEventListener('pointermove', onMove);
+    wrap.addEventListener('pointerup', onUp);
+    wrap.addEventListener('pointercancel', onUp);
+  });
+
+  wrap.addEventListener(
+    'click',
+    (event) => {
+      if (justDragged) {
+        justDragged = false;
+        event.stopPropagation();
+        event.preventDefault();
+      }
+    },
+    { capture: true },
+  );
 
   /* ── state machine ─────────────────────────────────────────────── */
 

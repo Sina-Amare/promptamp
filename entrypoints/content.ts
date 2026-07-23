@@ -27,6 +27,13 @@ export default defineContentScript({
   allFrames: true,
 
   async main(ctx) {
+    // The one unconditional log: which build this tab is actually running.
+    // Reload-the-extension-but-not-the-tab is the most common "the fix didn't
+    // work" false alarm, and this line settles it in one glance.
+    console.info(
+      `[PromptAmp] v${browser.runtime.getManifest().version} loaded`,
+    );
+
     // Suppression is resolved *before* anything is added to the DOM. A hidden
     // site must be hidden with certainty, not hidden-then-removed: a broken
     // off switch is the fastest way to lose a user's trust.
@@ -140,6 +147,10 @@ export default defineContentScript({
       session.start();
     }
 
+    // The user's dragged spot for this site, live-updated on drop so the fix
+    // applies instantly; persisted so it survives reloads.
+    let pin = suppression.pin;
+
     const tracker = createFieldTracker(
       {
         onAttach: (field) => {
@@ -153,6 +164,21 @@ export default defineContentScript({
             onStop: () => session?.stop(),
             onDismiss: (choice) => {
               void handleDismiss(choice);
+            },
+            // Drag-to-place: store the drop as an offset from the field's
+            // bottom-right (bottom-anchored, so a growing draft cannot move
+            // it), remember it for this site, use it immediately.
+            onDragEnd: (point) => {
+              const box = field.element.getBoundingClientRect();
+              pin = {
+                dx: Math.round(point.left - box.right),
+                dy: Math.round(point.top - box.bottom),
+              };
+              void sendMessage({
+                type: 'siteRule:patch',
+                origin: location.origin,
+                patch: { buttonPin: pin },
+              }).catch(() => undefined);
             },
           });
           layer.append(button.wrap);
@@ -192,6 +218,7 @@ export default defineContentScript({
         isOwnNode: (node) =>
           host.element.contains(node) || node === host.element,
         preferredCorner: () => suppression.corner,
+        pinnedOffset: () => pin,
         isSuppressed: () => sessionHidden || siteHidden,
       },
     );
@@ -273,6 +300,7 @@ export default defineContentScript({
 interface Suppression {
   suppressed: boolean;
   corner: ButtonCorner | null;
+  pin: { dx: number; dy: number } | null;
 }
 
 /**
@@ -282,17 +310,18 @@ interface Suppression {
 async function loadSuppression(): Promise<Suppression | null> {
   try {
     const settings = await sendMessage({ type: 'settings:get' });
-    if (settings.globallyHidden) return { suppressed: true, corner: null };
+    if (settings.globallyHidden)
+      return { suppressed: true, corner: null, pin: null };
     // A one-hour pause for screen shares (UX-SPEC §1.5).
     if (settings.pausedUntil && settings.pausedUntil > Date.now()) {
-      return { suppressed: true, corner: null };
+      return { suppressed: true, corner: null, pin: null };
     }
 
     const rule = await sendMessage({
       type: 'siteRule:get',
       origin: location.origin,
     });
-    if (rule.hidden) return { suppressed: true, corner: null };
+    if (rule.hidden) return { suppressed: true, corner: null, pin: null };
 
     const hiddenThisSession = await sendMessage({
       type: 'session:isOriginHidden',
@@ -302,6 +331,7 @@ async function loadSuppression(): Promise<Suppression | null> {
     return {
       suppressed: hiddenThisSession,
       corner: rule.buttonCorner,
+      pin: rule.buttonPin,
     };
   } catch {
     // Unreachable *this attempt*. In MV3 an asleep worker is the normal case
@@ -323,5 +353,5 @@ async function resolveSuppression(): Promise<Suppression> {
     if (result) return result;
     await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
   }
-  return { suppressed: true, corner: null };
+  return { suppressed: true, corner: null, pin: null };
 }

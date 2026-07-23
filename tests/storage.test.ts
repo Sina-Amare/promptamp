@@ -70,6 +70,7 @@ describe('site rules', () => {
       hidden: false,
       pinnedProfileId: null,
       buttonCorner: null,
+      buttonPin: null,
     });
   });
 
@@ -388,6 +389,7 @@ describe('schema defaults', () => {
       hidden: false,
       pinnedProfileId: null,
       buttonCorner: null,
+      buttonPin: null,
     });
   });
 });

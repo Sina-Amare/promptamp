@@ -200,6 +200,26 @@
         </article>
 
         <article>
+          <label id="gemini-label"
+            >Gemini-style (24px-tall line in a padded pill)</label
+          >
+          <!-- Ground truth from gemini.google.com: EDITABLE [445x24] inside a
+               padded 80px pill, custom element wrapper, no send button. The
+               plain 40px height gate silently rejected this. -->
+          <div class="chat-pill gemini-pill" data-testid="gemini-shell">
+            <button type="button" class="chat-btn">+</button>
+            <div
+              class="gemini-line"
+              data-testid="gemini-editable"
+              contenteditable="true"
+              role="textbox"
+              aria-labelledby="gemini-label"
+            ></div>
+            <button type="button" class="chat-btn">🎤</button>
+          </div>
+        </article>
+
+        <article>
           <label id="grok-label"
             >Grok-style (single-line pill, cluster beside)</label
           >

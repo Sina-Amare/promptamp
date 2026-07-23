@@ -29,7 +29,7 @@ export default defineConfig({
     short_name: 'PromptAmp',
     description:
       'Turn rough drafts into engineered prompts with one tap, in any text field. Bring your own API key — no backend, no telemetry.',
-    version: '0.1.0',
+    version: '0.2.0',
 
     // Every size is emitted rather than left to the browser: Chrome scales
     // 128 down to 16 badly enough that a thin arc turns to grey mush.

@@ -258,3 +258,29 @@ test('Grok-style pill: disc beside the cluster, never over the edge', async ({
     .getByTestId('grok-shell')
     .screenshot({ path: `${SHOT_DIR}/grok-pill.png` });
 });
+
+test('Gemini-style pill: a 24px-tall line still gets the disc, well placed', async ({
+  page,
+}) => {
+  // Ground truth from gemini.google.com: EDITABLE [445x24] in a padded pill.
+  // The 40px height gate silently rejected it — the disc never appeared.
+  await page.goto('http://localhost:5174/');
+  await fillEditable(page, 'gemini-editable', 'یک عکس لینکدین حرفه‌ای بساز');
+  await page.getByTestId('gemini-editable').click();
+  await expect(disc(page)).toBeVisible();
+  await page.waitForTimeout(250);
+
+  const discBox = await boxOf(disc(page));
+  const shellBox = await boxOf(page.getByTestId('gemini-shell'));
+  expect(within(discBox, shellBox), 'disc inside the pill').toBe(true);
+  for (const control of await page
+    .getByTestId('gemini-shell')
+    .locator('button')
+    .all()) {
+    expect(intersects(discBox, await boxOf(control))).toBe(false);
+  }
+
+  await page
+    .getByTestId('gemini-shell')
+    .screenshot({ path: `${SHOT_DIR}/gemini-pill.png` });
+});

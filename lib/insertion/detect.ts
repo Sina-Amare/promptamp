@@ -182,9 +182,22 @@ export function isOptedOut(el: Element): boolean {
 export const MIN_FIELD_HEIGHT = 40;
 export const MIN_FIELD_WIDTH = 200;
 
+/**
+ * The wide-single-line exception, ground-truthed on gemini.google.com: its
+ * composer's true editable is a 445×24 line inside a padded pill, so the
+ * 40px height floor silently rejected the most-visited AI site there is (and
+ * Google's Flow, built the same way). A 24px-tall line that is ALSO ≥320px
+ * wide is unmistakably a real composer, not a chip or a tag input.
+ */
+export const MIN_LINE_HEIGHT = 20;
+export const MIN_LINE_WIDTH = 320;
+
 export function isLargeEnough(el: Element): boolean {
   const rect = el.getBoundingClientRect();
-  return rect.height >= MIN_FIELD_HEIGHT && rect.width >= MIN_FIELD_WIDTH;
+  if (rect.height >= MIN_FIELD_HEIGHT && rect.width >= MIN_FIELD_WIDTH) {
+    return true;
+  }
+  return rect.height >= MIN_LINE_HEIGHT && rect.width >= MIN_LINE_WIDTH;
 }
 
 /**

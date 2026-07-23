@@ -267,3 +267,17 @@ button[data-testid='close-dialog'] {
   padding-top: 8px;
   background: var(--surface);
 }
+
+/* Gemini true repro: the editable is a 24px-tall line inside an 80px pill. */
+.gemini-pill {
+  padding: 28px 16px;
+}
+.gemini-line {
+  flex: 1;
+  height: 24px;
+  line-height: 24px;
+  outline: none;
+  font: inherit;
+  white-space: nowrap;
+  overflow-x: hidden;
+}

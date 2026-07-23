@@ -53,6 +53,15 @@ export const BUTTON_CSS = `
   display: block;
 }
 
+.pa-button-wrap[data-dragging='true'] {
+  cursor: grabbing;
+}
+
+.pa-button-wrap[data-dragging='true'] .pa-button {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
 .pa-button-wrap {
   position: absolute;
   width: var(--ph-btn-hit);

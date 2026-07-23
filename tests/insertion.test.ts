@@ -94,11 +94,21 @@ describe('qualification gates', () => {
 
   it.each([
     [199, 120],
-    [600, 39],
+    [250, 24],
     [10, 10],
   ])('rejects a %ix%i field', (width, height) => {
     const el = withSize(mount('<textarea></textarea>'), width, height);
     expect(qualifies(el)).toBe(false);
+  });
+
+  it.each([
+    // Gemini's real composer: a 445x24 line inside a padded pill. The plain
+    // 40px height floor silently rejected it — a wide single line qualifies.
+    [445, 24],
+    [600, 39],
+  ])('accepts a wide single-line composer (%ix%i)', (width, height) => {
+    const el = withSize(mount('<textarea></textarea>'), width, height);
+    expect(qualifies(el)).toBe(true);
   });
 
   it.each([

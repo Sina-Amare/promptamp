@@ -129,6 +129,19 @@ export const siteRuleSchema = z.object({
   pinnedProfileId: z.string().max(64).nullable().default(null),
   /** Where the user dragged the button. Only snapped corners persist. */
   buttonCorner: buttonCornerSchema.nullable().default(null),
+  /**
+   * The exact spot the user dragged the disc to on this site, as an offset
+   * from the field's bottom-right corner (bottom-anchored, so a growing draft
+   * cannot move it). When set it outranks every placement rule: the user is
+   * the final authority on their own screen.
+   */
+  buttonPin: z
+    .object({
+      dx: z.number().min(-4000).max(4000),
+      dy: z.number().min(-4000).max(4000),
+    })
+    .nullable()
+    .default(null),
 });
 export type SiteRule = z.infer<typeof siteRuleSchema>;
 

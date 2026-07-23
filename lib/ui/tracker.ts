@@ -58,6 +58,11 @@ export interface TrackerOptions {
   isOwnNode: (el: Element) => boolean;
   /** Preferred corner for this origin, if the user dragged one. */
   preferredCorner: () => ButtonCorner | null;
+  /**
+   * The exact per-site spot the user dragged the disc to (offset from the
+   * field's bottom-right). Outranks every placement rule when set.
+   */
+  pinnedOffset: () => { dx: number; dy: number } | null;
   /** Checked before any injection — a broken off switch is unforgivable. */
   isSuppressed: () => boolean;
 }
@@ -103,6 +108,27 @@ export function createFieldTracker(
   let scrollRaf = 0;
   let scrollSettle: ReturnType<typeof setTimeout> | undefined;
 
+  /**
+   * A user-dragged pin beats every rule. The point is the field's bottom-right
+   * plus the stored offset, clamped on-screen — the user put it there, so the
+   * only correction we ever apply is "stay visible".
+   */
+  function pinnedPoint(box: DOMRect): { top: number; left: number } | null {
+    const pin = options.pinnedOffset();
+    if (!pin) return null;
+    const size = options.buttonSize;
+    return {
+      top: Math.min(
+        Math.max(0, box.bottom + pin.dy),
+        globalThis.innerHeight - size,
+      ),
+      left: Math.min(
+        Math.max(0, box.right + pin.dx),
+        globalThis.innerWidth - size,
+      ),
+    };
+  }
+
   function reposition(): void {
     if (!field) return;
 
@@ -121,6 +147,15 @@ export function createFieldTracker(
       return;
     }
 
+    const box = field.getBoundingClientRect();
+    const pinned = pinnedPoint(box);
+    if (pinned) {
+      lastCorner = 'bottom-end';
+      lastOffset = { dx: pinned.left - box.left, dy: pinned.top - box.bottom };
+      callbacks.onMove(pinned, 'bottom-end');
+      return;
+    }
+
     const placement = placeButton(
       field,
       direction,
@@ -129,7 +164,6 @@ export function createFieldTracker(
       options.isOwnNode,
     );
     lastCorner = placement.corner;
-    const box = field.getBoundingClientRect();
     lastOffset = {
       dx: placement.point.left - box.left,
       dy: placement.point.top - box.bottom,
@@ -143,17 +177,20 @@ export function createFieldTracker(
 
     field = candidate;
     direction = resolveDirection(candidate);
-    lastCorner = null; // a fresh field earns a fresh ladder walk
+    lastCorner = null; // a fresh field earns a fresh walk
 
-    const placement = placeButton(
-      candidate,
-      direction,
-      options.buttonSize,
-      options.preferredCorner(),
-      options.isOwnNode,
-    );
-    lastCorner = placement.corner;
     const box = candidate.getBoundingClientRect();
+    const pinned = pinnedPoint(box);
+    const placement = pinned
+      ? { corner: 'bottom-end' as const, point: pinned, forced: false }
+      : placeButton(
+          candidate,
+          direction,
+          options.buttonSize,
+          options.preferredCorner(),
+          options.isOwnNode,
+        );
+    lastCorner = placement.corner;
     lastOffset = {
       dx: placement.point.left - box.left,
       dy: placement.point.top - box.bottom,
