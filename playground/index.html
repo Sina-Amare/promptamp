@@ -140,6 +140,81 @@
         </article>
       </section>
 
+      <!-- ── Chat composer replicas ─────────────────────────────── -->
+      <!-- Faithful DOM shapes of the real chat UIs the button kept missing:
+           the true editable is only the text block; the visible rounded box
+           with its control row is a wrapper. Placement is verified against
+           these in e2e/composers.spec.ts — screenshots included. -->
+      <section data-tier="composers">
+        <h2>Chat composer replicas</h2>
+
+        <article>
+          <label id="claude-label"
+            >Claude-style (row below, grows upward)</label
+          >
+          <div class="chat-shell" data-testid="claude-shell">
+            <div
+              class="chat-editable"
+              data-testid="claude-editable"
+              contenteditable="true"
+              role="textbox"
+              aria-multiline="true"
+              aria-labelledby="claude-label"
+            ></div>
+            <div class="chat-row">
+              <button type="button" class="chat-btn">+</button>
+              <button type="button" class="chat-btn">▣</button>
+              <span class="chat-spacer"></span>
+              <button type="button" class="chat-model">Opus 4.8 Max ▾</button>
+              <button type="button" class="chat-btn">🎤</button>
+              <button type="button" class="chat-send">↑</button>
+            </div>
+          </div>
+        </article>
+
+        <article>
+          <label id="gpt-label"
+            >ChatGPT-style (internal scroll on long text)</label
+          >
+          <div class="chat-shell" data-testid="gpt-shell">
+            <div
+              class="chat-editable gpt-scroll"
+              data-testid="gpt-editable"
+              contenteditable="true"
+              role="textbox"
+              aria-multiline="true"
+              aria-labelledby="gpt-label"
+            ></div>
+            <div class="chat-row">
+              <button type="button" class="chat-btn">+</button>
+              <span class="chat-spacer"></span>
+              <button type="button" class="chat-model">High ▾</button>
+              <button type="button" class="chat-btn">🎤</button>
+              <button type="button" class="chat-send">↑</button>
+            </div>
+          </div>
+        </article>
+
+        <article>
+          <label id="grok-label"
+            >Grok-style (single-line pill, cluster beside)</label
+          >
+          <div class="chat-pill" data-testid="grok-shell">
+            <button type="button" class="chat-btn">+</button>
+            <div
+              class="pill-editable"
+              data-testid="grok-editable"
+              contenteditable="true"
+              role="textbox"
+              aria-labelledby="grok-label"
+            ></div>
+            <button type="button" class="chat-model">Fast ▾</button>
+            <button type="button" class="chat-btn">🎤</button>
+            <button type="button" class="chat-send">◉</button>
+          </div>
+        </article>
+      </section>
+
       <!-- ── Hostile containers ─────────────────────────────────── -->
       <section data-tier="containers">
         <h2>Containers</h2>

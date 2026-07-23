@@ -490,6 +490,11 @@ function connectionCard(
   });
   save.addEventListener('click', () => {
     void (async () => {
+      // In-flight feedback: the button itself says what is happening and a
+      // second click cannot double-submit. The re-render on completion
+      // restores it.
+      save.disabled = true;
+      save.textContent = t('common.saving');
       setStatus(t('common.saving'), '');
       const keyInputHadValue = keyInput.value.trim().length > 0;
 
@@ -550,21 +555,31 @@ function connectionCard(
         setStatus(t('conn.testNeedsKey'), 'info');
         return;
       }
+      // In-flight feedback on the button itself; no double-fire.
+      test.disabled = true;
+      test.textContent = t('common.testing');
       setStatus(t('common.testing'), '');
-      const result = await sendMessage({
-        type: 'connection:test',
-        connectionId: connection.id,
-        ...(typedKey ? { apiKey: typedKey } : {}),
-        ...(modelInput.value.trim() ? { model: modelInput.value.trim() } : {}),
-      });
-      setStatus(
-        result.ok
-          ? t('conn.working', { model: result.model ?? '' })
-          : [result.error?.message, result.error?.remedy]
-              .filter(Boolean)
-              .join(' '),
-        result.ok ? 'ok' : 'err',
-      );
+      try {
+        const result = await sendMessage({
+          type: 'connection:test',
+          connectionId: connection.id,
+          ...(typedKey ? { apiKey: typedKey } : {}),
+          ...(modelInput.value.trim()
+            ? { model: modelInput.value.trim() }
+            : {}),
+        });
+        setStatus(
+          result.ok
+            ? t('conn.working', { model: result.model ?? '' })
+            : [result.error?.message, result.error?.remedy]
+                .filter(Boolean)
+                .join(' '),
+          result.ok ? 'ok' : 'err',
+        );
+      } finally {
+        test.disabled = false;
+        test.textContent = t('common.test');
+      }
     })();
   });
 

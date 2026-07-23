@@ -201,17 +201,29 @@ export interface PlacementResult {
  * extends meaningfully below the editable (that extension IS the control row)
  * while still wrapping it horizontally like a composer box would.
  */
-function shellRect(field: Element, fieldBox: DOMRect): DOMRect {
+export function shellRect(field: Element, fieldBox: DOMRect): DOMRect {
   let candidate: Element | null = field.parentElement;
   for (let hops = 0; candidate && hops < 4; hops++) {
     const box = candidate.getBoundingClientRect();
-    const extendsBelow = box.bottom - fieldBox.bottom >= 36;
-    const wrapsHorizontally =
-      box.left <= fieldBox.left + 16 && box.right >= fieldBox.right - 16;
     // Sanity: a composer shell is box-like, not the page or a scroll region.
     const sane =
-      box.height <= fieldBox.height + 160 && box.width <= fieldBox.width + 200;
-    if (extendsBelow && wrapsHorizontally && sane) return box;
+      box.height <= fieldBox.height + 160 && box.width <= fieldBox.width + 320;
+
+    // Multi-line composers (ChatGPT, Claude): the control row sits BELOW the
+    // text block, inside a wrapper that spans it horizontally.
+    const rowBelow =
+      box.bottom - fieldBox.bottom >= 36 &&
+      box.left <= fieldBox.left + 16 &&
+      box.right >= fieldBox.right - 16;
+
+    // Single-line pills (Grok, ChatGPT's empty bar): the control cluster sits
+    // to the END of the text, inside a wrapper that spans it vertically.
+    const rowBeside =
+      (box.right - fieldBox.right >= 36 || fieldBox.left - box.left >= 36) &&
+      box.top <= fieldBox.top + 8 &&
+      box.bottom >= fieldBox.bottom - 8;
+
+    if (sane && (rowBelow || rowBeside)) return box;
     candidate = candidate.parentElement;
   }
   return fieldBox;
@@ -245,7 +257,13 @@ export function placeButton(
     // the same corners whatever the text direction, so RTL cannot flip the
     // disc onto the text.
     if (corner === 'bottom-end') {
-      const rowTop = rect.top + rect.height - EDGE_INSET - size;
+      // A box shorter than the disc + insets has no "bottom row" — the row IS
+      // the box. Centre vertically there, or the maths lands above the top
+      // edge (the Grok pill bug).
+      const rowTop =
+        rect.height < size + EDGE_INSET * 2
+          ? rect.top + (rect.height - size) / 2
+          : rect.top + rect.height - EDGE_INSET - size;
       for (let step = 0; step < 6; step++) {
         const left =
           rect.left + rect.width - EDGE_INSET - size - step * HIT_ZONE;

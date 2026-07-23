@@ -170,3 +170,84 @@ button[data-testid='close-dialog'] {
   font-size: 13px;
   cursor: pointer;
 }
+
+/* ── chat composer replicas ──────────────────────────────────────── */
+
+.chat-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px 10px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--surface);
+}
+
+.chat-editable {
+  min-height: 48px;
+  outline: none;
+  font: inherit;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* ChatGPT caps the text block and scrolls it internally on long drafts. */
+.gpt-scroll {
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.chat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-spacer {
+  flex: 1;
+}
+
+.chat-btn,
+.chat-model,
+.chat-send {
+  border: 0;
+  background: var(--surface-raised, rgba(127, 127, 127, 0.15));
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 999px;
+  padding: 8px 10px;
+}
+
+.chat-model {
+  padding: 8px 14px;
+}
+
+.chat-send {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+
+/* Grok: one pill, editable inline, cluster to the end. */
+.chat-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.pill-editable {
+  flex: 1;
+  min-height: 24px;
+  padding: 8px 0;
+  outline: none;
+  font: inherit;
+  white-space: nowrap;
+  overflow-x: hidden;
+}

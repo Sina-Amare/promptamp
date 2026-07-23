@@ -16,6 +16,7 @@ import {
 } from '../messaging/protocol';
 import { sendMessage } from '../messaging/client';
 import { t } from '../i18n';
+import { shellRect } from './position';
 import { createPanel, type PanelHandle } from './panel';
 import { createSmoothStream, type SmoothStream } from './panel/stream';
 
@@ -176,14 +177,25 @@ export function createSession(
       }
     }
 
+    // Anchor to the visible composer SHELL, not the bare editable: the
+    // editable sits inside the rounded box with padding around it, so a panel
+    // offset from the editable's top lands on the box itself (the overlap seen
+    // live on ChatGPT). A virtual reference re-reads the shell every update,
+    // so it also tracks the box as a long draft grows.
+    const shellRef = {
+      getBoundingClientRect: () =>
+        shellRect(deps.field, deps.field.getBoundingClientRect()),
+      contextElement: deps.field,
+    };
+
     // Above the field by preference: chat composers sit at the viewport
     // bottom, and below would flow off-screen.
     cleanupPosition = autoUpdate(
-      deps.field,
+      shellRef,
       panel.element,
       () => {
         if (!panel) return;
-        void computePosition(deps.field, panel.element, {
+        void computePosition(shellRef, panel.element, {
           placement: 'top',
           // Fixed, so the coordinates are viewport-relative and unambiguous
           // even after showPopover() promotes the panel to the top layer.

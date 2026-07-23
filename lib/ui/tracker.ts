@@ -94,9 +94,10 @@ export function createFieldTracker(
   // a scroll cannot hop the disc between rungs as viewport geometry shifts —
   // it moves only when its corner genuinely stops fitting.
   let lastCorner: ReturnType<typeof placeButton>['corner'] | null = null;
-  // The disc's exact offset from the field's top-left at the last full
-  // placement. The scroll glide re-applies this offset verbatim, so a slot
-  // chosen inside the send row is held to the pixel while scrolling.
+  // The disc's exact offset from the field's BOTTOM-left at the last full
+  // placement. Bottom-anchored on purpose: composers grow upward as the draft
+  // wraps — the top edge moves, the send row does not — so a bottom offset
+  // stays glued through both scrolling and growth.
   let lastOffset: { dx: number; dy: number } | null = null;
   // The scroll glide: a rAF loop alive only while scroll events stream in.
   let scrollRaf = 0;
@@ -131,7 +132,7 @@ export function createFieldTracker(
     const box = field.getBoundingClientRect();
     lastOffset = {
       dx: placement.point.left - box.left,
-      dy: placement.point.top - box.top,
+      dy: placement.point.top - box.bottom,
     };
     callbacks.onMove(placement.point, placement.corner);
   }
@@ -155,7 +156,7 @@ export function createFieldTracker(
     const box = candidate.getBoundingClientRect();
     lastOffset = {
       dx: placement.point.left - box.left,
-      dy: placement.point.top - box.top,
+      dy: placement.point.top - box.bottom,
     };
 
     callbacks.onAttach({
@@ -281,7 +282,7 @@ export function createFieldTracker(
     // The exact placed offset, re-applied — never re-derived — so the disc is
     // pixel-glued to its slot while the field moves.
     callbacks.onMove(
-      { top: box.top + lastOffset.dy, left: box.left + lastOffset.dx },
+      { top: box.bottom + lastOffset.dy, left: box.left + lastOffset.dx },
       lastCorner,
     );
     scrollRaf = requestAnimationFrame(glide);
