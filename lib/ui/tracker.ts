@@ -84,6 +84,10 @@ export function createFieldTracker(
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   let scrollTargets: EventTarget[] = [];
   let fieldResize: ResizeObserver | null = null;
+  // The corner chosen for the current field. Preferred on every reposition, so
+  // a scroll cannot hop the disc between rungs as viewport geometry shifts —
+  // it moves only when its corner genuinely stops fitting.
+  let lastCorner: ReturnType<typeof placeButton>['corner'] | null = null;
 
   function reposition(): void {
     if (!field) return;
@@ -107,9 +111,10 @@ export function createFieldTracker(
       field,
       direction,
       options.buttonSize,
-      options.preferredCorner(),
+      lastCorner ?? options.preferredCorner(),
       options.isOwnNode,
     );
+    lastCorner = placement.corner;
     callbacks.onMove(placement.point, placement.corner);
   }
 
@@ -119,6 +124,7 @@ export function createFieldTracker(
 
     field = candidate;
     direction = resolveDirection(candidate);
+    lastCorner = null; // a fresh field earns a fresh ladder walk
 
     const placement = placeButton(
       candidate,
@@ -127,6 +133,7 @@ export function createFieldTracker(
       options.preferredCorner(),
       options.isOwnNode,
     );
+    lastCorner = placement.corner;
 
     callbacks.onAttach({
       element: candidate,
@@ -159,6 +166,7 @@ export function createFieldTracker(
     scrollTargets = [];
     fieldResize?.disconnect();
     fieldResize = null;
+    lastCorner = null;
     clearInterval(pollTimer);
     clearTimeout(typingTimer);
     field = null;

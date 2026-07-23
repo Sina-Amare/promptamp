@@ -22,19 +22,20 @@ export const HIT_ZONE = 48;
 /**
  * The flip ladder.
  *
- * `outside-end` leads: hanging in the margin past the field's end edge is the
- * one placement that can never cover the user's own text, which was the
- * top complaint about sitting inside the corner. It falls back to the inside
- * corners (the convention Grammarly/LanguageTool established) only when there
- * is no room outside — a field flush against the window edge — and to
- * `outside-below` as the last resort.
+ * Inside corners lead — the convention Grammarly/LanguageTool established, and
+ * the placement live testing validated. The outside-first experiment failed on
+ * real chat UIs: ChatGPT and Claude wrap the true editable in a padded visual
+ * shell, so "just outside the field" lands ON the shell's border and reads as
+ * a glitch. Inside `bottom-end` sits where the eye already is (the send row),
+ * the occupancy check walks it off any control there, and the outside rungs
+ * remain as genuine fallbacks for tiny or crowded fields.
  */
 export const CORNER_LADDER: ButtonCorner[] = [
-  'outside-end',
   'bottom-end',
-  'bottom-start',
   'top-end',
+  'bottom-start',
   'top-start',
+  'outside-end',
   'outside-below',
 ];
 

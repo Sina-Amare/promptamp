@@ -20,17 +20,30 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('outside-end placement', () => {
-  it('leads the ladder — never on the text is the default', () => {
-    expect(CORNER_LADDER[0]).toBe('outside-end');
+describe('the ladder', () => {
+  it('leads inside at bottom-end — the convention real chat UIs fit', () => {
+    // Outside-first failed live: ChatGPT/Claude wrap the editable in a padded
+    // shell, so "just outside the field" straddles the shell's border.
+    expect(CORNER_LADDER[0]).toBe('bottom-end');
+    // The outside rungs stay available as genuine fallbacks.
+    expect(CORNER_LADDER).toContain('outside-end');
   });
+});
 
+describe('outside-end placement (fallback rung)', () => {
   it('hangs past the end edge, vertically centred (LTR → right)', () => {
     const point = cornerPosition(field, 'outside-end', 'ltr', SIZE);
     // Right of the field's border, with the gap.
     expect(point.left).toBe(field.left + field.width + OUTSIDE_GAP);
-    // Centred on the field.
+    // Centred on the field (short fields; tall composers bottom-align).
     expect(point.top).toBe(field.top + field.height / 2 - SIZE / 2);
+  });
+
+  it('bottom-aligns on a tall composer instead of floating mid-edge', () => {
+    const tall: Rect = { top: 100, left: 200, width: 300, height: 220 };
+    const point = cornerPosition(tall, 'outside-end', 'ltr', SIZE);
+    expect(point.top).toBeGreaterThan(tall.top + tall.height / 2);
+    expect(point.top + SIZE).toBeLessThanOrEqual(tall.top + tall.height);
   });
 
   it('mirrors for RTL (→ left of the field)', () => {
