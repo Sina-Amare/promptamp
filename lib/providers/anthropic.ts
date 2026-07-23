@@ -71,6 +71,8 @@ export const anthropicAdapter = async (
     maxRetries,
   );
 
+  req.onHeaders?.(response.headers);
+
   if (streaming) return readAnthropicSse(response, onChunk);
 
   const parsed = (await response.json()) as AnthropicBody;

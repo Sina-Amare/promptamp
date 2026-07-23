@@ -23,6 +23,12 @@ export interface ChatRequest {
    */
   onChunk?: (delta: string) => void;
   /**
+   * Called with the raw response headers once they arrive. Used to read
+   * rate-limit headers for the usage readout without a second request; ignored
+   * by everything else.
+   */
+  onHeaders?: (headers: Headers) => void;
+  /**
    * How many times to retry a 429 on this connection before giving up.
    * Defaults to `MAX_RETRIES`.
    *

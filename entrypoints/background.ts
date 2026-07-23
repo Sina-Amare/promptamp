@@ -15,7 +15,12 @@ import {
   type EnhanceServerMessage,
   type Request,
 } from '../lib/messaging/protocol';
-import { getProvider, listModels, testConnection } from '../lib/providers';
+import {
+  fetchUsage,
+  getProvider,
+  listModels,
+  testConnection,
+} from '../lib/providers';
 import { connectOpenRouter } from '../lib/providers/oauth-openrouter';
 import {
   deleteConnection,
@@ -279,6 +284,9 @@ async function handle(
 
     case 'connection:models':
       return listModels(message.connectionId);
+
+    case 'connection:usage':
+      return fetchUsage(message.connectionId);
 
     case 'connection:connectOpenRouter': {
       try {

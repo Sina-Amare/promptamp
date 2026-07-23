@@ -115,6 +115,7 @@ export type Request =
   /** The whole chain, in the new order. */
   | { type: 'connections:reorder'; ids: string[] }
   | { type: 'connection:models'; connectionId: string }
+  | { type: 'connection:usage'; connectionId: string }
   | { type: 'connection:connectOpenRouter' }
   | { type: 'profiles:save'; profile: Profile }
   | { type: 'profiles:delete'; profileId: string }
@@ -137,6 +138,46 @@ export interface ProviderTestResult {
   model?: string;
 }
 
+/**
+ * One selectable model. `free` is only set where the provider's API reports
+ * pricing (OpenRouter) — elsewhere free/paid is not a concept the API exposes,
+ * so it stays undefined and the picker shows a single group.
+ */
+export interface ModelInfo {
+  id: string;
+  free?: boolean;
+}
+
+/**
+ * What a key's usage/quota looks like. Providers differ wildly in what they
+ * expose, so this is a small union rather than one shape pretending they are
+ * the same:
+ *  - `credit`: a spend/limit account (OpenRouter's key endpoint).
+ *  - `rate`: only per-window rate-limit headers off a live request
+ *    (Groq / OpenAI / Anthropic).
+ *  - `unavailable`: the API exposes nothing (Gemini, local runners).
+ */
+export type UsageInfo =
+  | {
+      kind: 'credit';
+      freeTier: boolean;
+      usedUsd: number;
+      usedMonthlyUsd: number;
+      /** Null when the key has no set spending limit. */
+      limitUsd: number | null;
+      remainingUsd: number | null;
+    }
+  | {
+      kind: 'rate';
+      requestsRemaining?: number;
+      requestsLimit?: number;
+      tokensRemaining?: number;
+      tokensLimit?: number;
+      /** Seconds until the window resets, if the provider says. */
+      resetSeconds?: number;
+    }
+  | { kind: 'unavailable'; hintUrl?: string };
+
 export interface ResponseMap {
   'settings:get': Settings;
   'settings:patch': Settings;
@@ -154,7 +195,8 @@ export interface ResponseMap {
   'connection:save': ConfiguredConnection[];
   'connection:delete': ConfiguredConnection[];
   'connections:reorder': ConfiguredConnection[];
-  'connection:models': string[];
+  'connection:models': ModelInfo[];
+  'connection:usage': UsageInfo;
   'connection:connectOpenRouter': ProviderTestResult;
   'profiles:save': Profile[];
   'profiles:delete': Profile[];

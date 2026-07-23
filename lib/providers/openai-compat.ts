@@ -98,6 +98,8 @@ export const openaiCompatAdapter = async (
     maxRetries,
   );
 
+  req.onHeaders?.(response.headers);
+
   if (streaming) return readSse(response, onChunk);
 
   const parsed = (await response.json()) as CompletionBody;

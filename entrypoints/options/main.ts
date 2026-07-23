@@ -2,7 +2,11 @@ import { BUILTIN_PROFILES } from '../../lib/enhance/prompts';
 import { type MessageKey, t } from '../../lib/i18n';
 import { sendMessage } from '../../lib/messaging/client';
 import { missingPermissions, requestPermission } from '../../lib/permissions';
-import type { ConfiguredConnection } from '../../lib/messaging/protocol';
+import type {
+  ConfiguredConnection,
+  ModelInfo,
+  UsageInfo,
+} from '../../lib/messaging/protocol';
 import { PROVIDERS, USER_FACING_PROVIDERS } from '../../lib/providers/registry';
 import { formatCostUsd } from '../../lib/providers/cost';
 import type {
@@ -252,6 +256,176 @@ function chainSummary(connections: ConfiguredConnection[]): HTMLElement {
   });
 }
 
+/**
+ * Fetched model lists and usage, cached so they survive the re-render a save
+ * triggers and are not re-fetched on every paint. Keyed by connection id.
+ */
+const modelCache = new Map<string, ModelInfo[]>();
+const usageCache = new Map<string, UsageInfo>();
+
+/**
+ * Fetch this connection's models into the cache.
+ *
+ * `quiet` (used by the auto-load after a save) suppresses the failure flash so
+ * it never clobbers the "Saved" confirmation. `skipRender` lets the save flow
+ * cache first and repaint once, avoiding a second render that would race the
+ * flash.
+ */
+async function loadModelsFor(
+  connectionId: string,
+  opts: { quiet?: boolean; skipRender?: boolean } = {},
+): Promise<void> {
+  try {
+    const models = await sendMessage({
+      type: 'connection:models',
+      connectionId,
+    });
+    modelCache.set(connectionId, models);
+    if (models.length === 0 && !opts.quiet) {
+      flash = {
+        cardTitle: connectionId,
+        text: 'No models returned — check the key or server URL.',
+        kind: 'err',
+      };
+    }
+  } catch {
+    if (!opts.quiet) {
+      flash = {
+        cardTitle: connectionId,
+        text: 'Could not load models.',
+        kind: 'err',
+      };
+    }
+  }
+  if (!opts.skipRender) await renderPanel();
+}
+
+/** Fetch this connection's usage into the cache, then repaint. */
+async function loadUsageFor(connectionId: string): Promise<void> {
+  try {
+    usageCache.set(
+      connectionId,
+      await sendMessage({ type: 'connection:usage', connectionId }),
+    );
+  } catch {
+    flash = {
+      cardTitle: connectionId,
+      text: 'Could not read usage.',
+      kind: 'err',
+    };
+  }
+  await renderPanel();
+}
+
+/**
+ * The model dropdown, built from the cache. Free and paid are split into their
+ * own groups where the provider reports pricing (OpenRouter); otherwise one
+ * group. Selecting sets the text field, which stays the source of truth so a
+ * custom endpoint can still take a typed-in model id.
+ */
+function modelPicker(
+  connectionId: string,
+  modelInput: HTMLInputElement,
+): HTMLElement | null {
+  const models = modelCache.get(connectionId);
+  if (!models || models.length === 0) return null;
+
+  const opt = (m: ModelInfo): HTMLElement =>
+    el('option', { text: m.id, attrs: { value: m.id } });
+
+  const select = el('select', {
+    attrs: { 'aria-label': 'Choose a model' },
+  });
+  select.append(
+    el('option', {
+      text: `Choose a model (${String(models.length)})…`,
+      attrs: { value: '' },
+    }),
+  );
+
+  if (models.some((m) => m.free !== undefined)) {
+    const free = models.filter((m) => m.free);
+    const paid = models.filter((m) => !m.free);
+    if (free.length) {
+      select.append(
+        el('optgroup', {
+          attrs: { label: `Free (${String(free.length)})` },
+          children: free.map(opt),
+        }),
+      );
+    }
+    if (paid.length) {
+      select.append(
+        el('optgroup', {
+          attrs: { label: `Paid (${String(paid.length)})` },
+          children: paid.map(opt),
+        }),
+      );
+    }
+  } else {
+    select.append(
+      el('optgroup', {
+        attrs: { label: `Models (${String(models.length)})` },
+        children: models.map(opt),
+      }),
+    );
+  }
+
+  select.value = modelInput.value;
+  select.addEventListener('change', () => {
+    if (select.value) modelInput.value = select.value;
+  });
+  return select;
+}
+
+/** A one-line usage readout, as much as the provider's API is willing to say. */
+function usageLine(connectionId: string): HTMLElement | null {
+  const u = usageCache.get(connectionId);
+  if (!u) return null;
+
+  const money = (n: number): string => `$${n.toFixed(n < 1 ? 4 : 2)}`;
+  let text: string;
+  let link: HTMLElement | null = null;
+
+  if (u.kind === 'credit') {
+    const parts = [u.freeTier ? 'Free tier' : 'Paid'];
+    parts.push(`${money(u.usedMonthlyUsd)} used this month`);
+    if (u.limitUsd !== null && u.remainingUsd !== null) {
+      parts.push(`${money(u.remainingUsd)} of ${money(u.limitUsd)} left`);
+    }
+    text = parts.join(' · ');
+  } else if (u.kind === 'rate') {
+    const parts: string[] = [];
+    if (u.requestsRemaining !== undefined) {
+      parts.push(
+        u.requestsLimit !== undefined
+          ? `${String(u.requestsRemaining)} of ${String(u.requestsLimit)} requests left`
+          : `${String(u.requestsRemaining)} requests left`,
+      );
+    }
+    if (u.tokensRemaining !== undefined) {
+      parts.push(`${u.tokensRemaining.toLocaleString()} tokens left`);
+    }
+    if (u.resetSeconds !== undefined) {
+      parts.push(`resets in ${String(Math.round(u.resetSeconds))}s`);
+    }
+    text = parts.join(' · ') || 'Rate limits reported';
+  } else {
+    text = "This provider's API doesn't report usage.";
+    if (u.hintUrl) {
+      link = el('a', {
+        text: ' Check in Google AI Studio →',
+        attrs: { href: u.hintUrl, target: '_blank', rel: 'noreferrer' },
+      });
+    }
+  }
+
+  return el('p', {
+    class: 'usage',
+    children: [el('span', { text }), ...(link ? [link] : [])],
+  });
+}
+
 function connectionCard(
   connection: ConfiguredConnection,
   index: number,
@@ -282,17 +456,9 @@ function connectionCard(
   });
 
   const modelInput = el('input', {
-    attrs: {
-      type: 'text',
-      list: `${connection.id}-models`,
-      spellcheck: 'false',
-    },
+    attrs: { type: 'text', spellcheck: 'false' },
   });
   modelInput.value = connection.model;
-
-  const modelList = el('datalist', {
-    attrs: { id: `${connection.id}-models` },
-  });
 
   const baseUrlInput = el('input', {
     attrs: { type: 'url', placeholder: config.baseUrl, spellcheck: 'false' },
@@ -312,6 +478,7 @@ function connectionCard(
   save.addEventListener('click', () => {
     void (async () => {
       setStatus(t('common.saving'), '');
+      const keyInputHadValue = keyInput.value.trim().length > 0;
 
       // A user-supplied host is not covered by the manifest, so ask for it
       // here — inside the click, which is the only place Firefox allows it.
@@ -340,8 +507,16 @@ function connectionCard(
         },
       });
       keyInput.value = '';
-      // Survives the rebuild below, which is what actually shows the user
-      // their key was stored.
+
+      // The moment a key is in place, fetch the model list so the user picks
+      // from a real dropdown instead of typing an id. Cache first, then set the
+      // flash and repaint once — so "Saved" always shows and a failed model
+      // fetch never overwrites it (quiet).
+      const hasKey = keyInputHadValue || connection.hasKey;
+      if (hasKey || !config.requiresKey) {
+        await loadModelsFor(connection.id, { quiet: true, skipRender: true });
+      }
+
       flash = { cardTitle: connection.id, text: t('common.saved'), kind: 'ok' };
       await renderPanel();
     })();
@@ -372,26 +547,26 @@ function connectionCard(
 
   const fetchModels = el('button', {
     class: 'quiet',
-    text: t('conn.loadModels'),
+    text: modelCache.has(connection.id)
+      ? t('conn.reloadModels')
+      : t('conn.loadModels'),
     attrs: { type: 'button' },
   });
   fetchModels.addEventListener('click', () => {
-    void (async () => {
-      setStatus(t('conn.loadModels'), '');
-      const models = await sendMessage({
-        type: 'connection:models',
-        connectionId: connection.id,
-      });
-      modelList.replaceChildren(
-        ...models.map((m) => el('option', { attrs: { value: m } })),
-      );
-      setStatus(
-        models.length
-          ? t('conn.modelsFound', { n: models.length })
-          : t('conn.modelsNone'),
-        models.length ? 'ok' : 'err',
-      );
-    })();
+    fetchModels.disabled = true;
+    fetchModels.textContent = t('conn.loadingModels');
+    void loadModelsFor(connection.id);
+  });
+
+  const checkUsage = el('button', {
+    class: 'quiet',
+    text: t('conn.checkUsage'),
+    attrs: { type: 'button' },
+  });
+  checkUsage.addEventListener('click', () => {
+    checkUsage.disabled = true;
+    checkUsage.textContent = t('conn.checkingUsage');
+    void loadUsageFor(connection.id);
   });
 
   const remove = el('button', {
@@ -436,7 +611,6 @@ function connectionCard(
                 ],
               })
             : null,
-          fetchModels,
         ],
       }),
     ],
@@ -486,12 +660,11 @@ function connectionCard(
           })
         : null,
       el('label', {
-        children: [
-          el('span', { text: t('common.model') }),
-          modelInput,
-          modelList,
-        ],
+        children: [el('span', { text: t('common.model') }), modelInput],
       }),
+      modelPicker(connection.id, modelInput),
+      el('div', { class: 'row', children: [fetchModels, checkUsage] }),
+      usageLine(connection.id),
       actions,
       status,
       advanced,
