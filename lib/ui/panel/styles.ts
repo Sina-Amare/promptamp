@@ -14,7 +14,10 @@
  */
 export const PANEL_CSS = `
 .pa-panel {
-  position: absolute;
+  /* Fixed (not absolute): a top-layer popover positioned by left/top in
+     viewport coordinates — see session.ts. Absolute made the containing block
+     ambiguous once promoted to the top layer. */
+  position: fixed;
   z-index: var(--ph-z);
   /* The layer this sits in is pointer-events:none so the page stays clickable
      around the button. Without re-enabling them here the whole panel is

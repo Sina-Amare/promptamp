@@ -184,8 +184,8 @@ export function createSession(
         if (!panel) return;
         void computePosition(deps.field, panel.element, {
           placement: 'top',
-          // Fixed, to match the top-layer button layer this sits inside —
-          // every coordinate in the injected UI is viewport-relative.
+          // Fixed, so the coordinates are viewport-relative and unambiguous
+          // even after showPopover() promotes the panel to the top layer.
           strategy: 'fixed',
           middleware: [
             // A real gap from the composer — 10px read as touching it.
@@ -198,8 +198,13 @@ export function createSession(
           ],
         }).then(({ x, y }) => {
           if (!panel) return;
+          // Position with left/top, never transform: the panel is a top-layer
+          // popover whose entrance animation animates `transform`, and the two
+          // must not fight (that fight is what threw the panel to the top of the
+          // page). With position:fixed these are viewport coordinates.
           Object.assign(panel.element.style, {
-            transform: `translate3d(${String(x)}px, ${String(y)}px, 0)`,
+            left: `${String(Math.round(x))}px`,
+            top: `${String(Math.round(y))}px`,
           });
         });
       },
