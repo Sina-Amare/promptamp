@@ -64,18 +64,26 @@ async function fillEditable(
   );
 }
 
-/** Every client rect of the text inside the editable — the "never on the
- * user's words" assertion samples against these. */
+/** Every VISIBLE client rect of the text inside the editable — the "never on
+ * the user's words" assertion samples against these. Range rects are unclipped
+ * (lines scrolled out of an overflow box still report), so each is intersected
+ * with the editable's own box first: only painted words count. */
 async function textRects(page: Page, testId: string): Promise<Box[]> {
   return page.getByTestId(testId).evaluate((el) => {
+    const clip = el.getBoundingClientRect();
     const range = document.createRange();
     range.selectNodeContents(el);
-    return [...range.getClientRects()].map((r) => ({
-      x: r.x,
-      y: r.y,
-      width: r.width,
-      height: r.height,
-    }));
+    const out: { x: number; y: number; width: number; height: number }[] = [];
+    for (const r of range.getClientRects()) {
+      const x = Math.max(r.left, clip.left);
+      const y = Math.max(r.top, clip.top);
+      const right = Math.min(r.right, clip.right);
+      const bottom = Math.min(r.bottom, clip.bottom);
+      if (right - x > 1 && bottom - y > 1) {
+        out.push({ x, y, width: right - x, height: bottom - y });
+      }
+    }
+    return out;
   });
 }
 

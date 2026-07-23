@@ -147,6 +147,13 @@ export function isCornerOccupied(
     [point.left + size - 2, point.top + 2],
     [point.left + 2, point.top + size - 2],
     [point.left + size - 2, point.top + size - 2],
+    // Edge midpoints: a pill-shaped control's rounded corners are transparent
+    // to hit-testing, so corner probes slide past it — but at its vertical
+    // midline the cap is at its widest, and these catch it.
+    [point.left + 2, point.top + half],
+    [point.left + size - 2, point.top + half],
+    [point.left + half, point.top + 2],
+    [point.left + half, point.top + size - 2],
   ];
 
   for (const [x, y] of samples) {
@@ -229,6 +236,55 @@ export function shellRect(field: Element, fieldBox: DOMRect): DOMRect {
   return fieldBox;
 }
 
+/**
+ * Does this slot sit on the field's own text? `caretRangeFromPoint` finds the
+ * nearest text position; the slot only counts as "on text" when that text
+ * node's painted rects actually reach the slot — a caret snapped in from an
+ * empty region does not.
+ */
+function overText(field: Element, point: Point, size: number): boolean {
+  const doc = field.ownerDocument;
+  // Three probes across the slot — a single centre sample slips between line
+  // boxes and misses full-width lines.
+  const y = point.top + size / 2;
+  const xs = [point.left + 4, point.left + size / 2, point.left + size - 4];
+  for (const x of xs) {
+    const caret = doc.caretRangeFromPoint?.(x, y);
+    const node = caret?.startContainer;
+    if (!node || node.nodeType !== Node.TEXT_NODE || !field.contains(node)) {
+      continue;
+    }
+    if (!(node.textContent ?? '').trim()) continue;
+    const range = doc.createRange();
+    range.selectNodeContents(node);
+    for (const r of range.getClientRects()) {
+      if (
+        r.left < point.left + size &&
+        point.left < r.right &&
+        r.top < point.top + size &&
+        point.top < r.bottom
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * ONE deterministic home — learned the hard way.
+ *
+ * Seven rounds of heuristics (corner ladders, occupancy hopping, visual-shell
+ * walking) each fixed one real site and broke another: real chat DOMs defeat
+ * geometry guessing. What survived every live test as "perfect" was the same
+ * spot each time: the field's own bottom-end corner. So that is the rule now,
+ * Grammarly-style: the disc lives at the field's physical bottom-right
+ * (bottom-left only if the user chose it), reading ONLY the field's own rect —
+ * never an ancestor's. It slides sideways, at most a few steps, when a real
+ * control or the user's own text is under it; if everything is busy it takes
+ * the corner anyway — a visible disc beats a missing one. Deterministic in,
+ * deterministic out: the same field always yields the same spot.
+ */
 export function placeButton(
   field: Element,
   direction: 'ltr' | 'rtl',
@@ -236,7 +292,8 @@ export function placeButton(
   preferred: ButtonCorner | null,
   ignore: (el: Element) => boolean,
 ): PlacementResult {
-  const box = shellRect(field, field.getBoundingClientRect());
+  void direction; // physical placement on purpose: RTL must not flip the disc
+  const box = field.getBoundingClientRect();
   const rect: Rect = {
     top: box.top,
     left: box.left,
@@ -244,58 +301,52 @@ export function placeButton(
     height: box.height,
   };
 
-  const ladder = preferred
-    ? [preferred, ...CORNER_LADDER.filter((c) => c !== preferred)]
-    : CORNER_LADDER;
+  const startIsRight = preferred !== 'bottom-start';
+  const corner: ButtonCorner = startIsRight ? 'bottom-end' : 'bottom-start';
 
-  for (const corner of ladder) {
-    // The bottom row is special: chat composers keep their controls at the
-    // row's physical edges ("+" at the left, mic/send at the right) and leave
-    // the middle empty. Start at the physical bottom-right and slide toward
-    // that empty middle until a free slot appears — the one spot a human
-    // would call "empty space". Physical on purpose: control clusters sit at
-    // the same corners whatever the text direction, so RTL cannot flip the
-    // disc onto the text.
-    if (corner === 'bottom-end') {
-      // A box shorter than the disc + insets has no "bottom row" — the row IS
-      // the box. Centre vertically there, or the maths lands above the top
-      // edge (the Grok pill bug).
-      const rowTop =
-        rect.height < size + EDGE_INSET * 2
-          ? rect.top + (rect.height - size) / 2
-          : rect.top + rect.height - EDGE_INSET - size;
-      for (let step = 0; step < 6; step++) {
-        const left =
-          rect.left + rect.width - EDGE_INSET - size - step * HIT_ZONE;
-        if (left < rect.left + EDGE_INSET) break;
-        const slot: Point = { top: rowTop, left };
-        if (!fitsInViewport(slot, size)) continue;
-        if (!isCornerOccupied(slot, HIT_ZONE, ignore)) {
-          return { corner, point: slot, forced: false };
-        }
-      }
-      continue;
-    }
+  // A box shorter than the disc + insets has no "bottom row" — the row IS the
+  // box. Centre vertically there, or the maths lands above the top edge.
+  const rowTop =
+    rect.height < size + EDGE_INSET * 2
+      ? rect.top + (rect.height - size) / 2
+      : rect.top + rect.height - EDGE_INSET - size;
 
-    const point = cornerPosition(rect, corner, direction, size);
-    // Skip a placement that would put the button off-screen (a field flush to
-    // the window edge has no room for an outside corner).
-    if (!fitsInViewport(point, size)) continue;
-    // getBoundingClientRect and elementsFromPoint are both viewport-relative,
-    // so no scroll conversion is needed on either side.
-    if (!isCornerOccupied(point, HIT_ZONE, ignore)) {
-      return { corner, point, forced: false };
+  const slotAt = (step: number): number =>
+    startIsRight
+      ? rect.left + rect.width - EDGE_INSET - size - step * HIT_ZONE
+      : rect.left + EDGE_INSET + step * HIT_ZONE;
+
+  for (let step = 0; step < 6; step++) {
+    const left = slotAt(step);
+    if (left < rect.left || left + size > rect.left + rect.width) break;
+    const slot: Point = { top: rowTop, left };
+    if (!fitsInViewport(slot, size)) break;
+    if (
+      !isCornerOccupied(slot, HIT_ZONE, ignore) &&
+      !overText(field, slot, size)
+    ) {
+      return { corner, point: slot, forced: false };
     }
   }
 
-  // Every fitting corner is occupied. Fall back to the inside bottom-end
-  // corner — clamped on-screen — rather than an off-screen outside slot.
-  const corner: ButtonCorner = 'bottom-end';
-  return {
-    corner,
-    point: cornerPosition(rect, corner, direction, size),
-    forced: true,
-  };
+  // Every in-field slot sits on the user's words (an internally-scrolling
+  // editable is solid text). Tier two, still deterministic and still only the
+  // field's own rect: the band just below the field's bottom edge — on real
+  // chat shells that IS the control row, on a bare textarea it is the page
+  // margin. Slide along it past the row's own controls. Never on text.
+  const belowTop = rect.top + rect.height + EDGE_INSET / 2;
+  for (let step = 0; step < 6; step++) {
+    const left = slotAt(step);
+    if (left < rect.left || left + size > rect.left + rect.width) break;
+    const slot: Point = { top: belowTop, left };
+    if (!fitsInViewport(slot, size)) break;
+    if (!isCornerOccupied(slot, HIT_ZONE, ignore)) {
+      return { corner: 'outside-below', point: slot, forced: false };
+    }
+  }
+
+  // Truly nowhere: take the corner anyway rather than wandering off.
+  return { corner, point: { top: rowTop, left: slotAt(0) }, forced: true };
 }
 
 /** UX-SPEC §0.6: an orphaned button floating over unrelated content is worse than none. */
