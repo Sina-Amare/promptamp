@@ -388,12 +388,25 @@ function usageLine(connectionId: string): HTMLElement | null {
   let link: HTMLElement | null = null;
 
   if (u.kind === 'credit') {
-    const parts = [u.freeTier ? 'Free tier' : 'Paid'];
-    parts.push(`${money(u.usedMonthlyUsd)} used this month`);
     if (u.limitUsd !== null && u.remainingUsd !== null) {
-      parts.push(`${money(u.remainingUsd)} of ${money(u.limitUsd)} left`);
+      // A funded account — a dollar balance is the meaningful number.
+      text = `${money(u.remainingUsd)} of ${money(u.limitUsd)} credit left`;
+    } else if (u.freeTier) {
+      // On the free tier, spend is meaningless — what matters is the per-day
+      // request cap, which OpenRouter does not expose through its API. Say that
+      // honestly and send the user to where the live count actually lives.
+      text = 'Free tier — free models are capped per day.';
+      link = el('a', {
+        text: ' See your usage →',
+        attrs: {
+          href: 'https://openrouter.ai/activity',
+          target: '_blank',
+          rel: 'noreferrer',
+        },
+      });
+    } else {
+      text = `${money(u.usedMonthlyUsd)} used this month`;
     }
-    text = parts.join(' · ');
   } else if (u.kind === 'rate') {
     const parts: string[] = [];
     if (u.requestsRemaining !== undefined) {
