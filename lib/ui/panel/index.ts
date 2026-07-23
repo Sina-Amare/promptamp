@@ -558,6 +558,29 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     element.setAttribute('popover', 'manual');
   }
 
+  /* ── isolation ─────────────────────────────────────────────────── */
+
+  // Everything typed belongs to the panel, not the page. Our inputs — the
+  // editable body and the "describe a change" field — live in a shadow root,
+  // and keyboard/input/clipboard events are composed:true, so without this they
+  // bubble out to the host, whose chat composer (ProseMirror/Lexical) treats
+  // them as typing and writes them into the user's message box. Stopping at the
+  // panel root leaves every inner handler intact (they fire first, on the way
+  // up) — only the escape to the page is cut.
+  for (const type of [
+    'keydown',
+    'keyup',
+    'keypress',
+    'input',
+    'beforeinput',
+    'paste',
+    'cut',
+  ] as const) {
+    element.addEventListener(type, (event) => {
+      event.stopPropagation();
+    });
+  }
+
   /* ── keyboard map (§6) ─────────────────────────────────────────── */
 
   element.addEventListener('keydown', (event) => {
@@ -690,6 +713,10 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
 
     showLoading: () => {
       setBusy(true);
+      // A steady reading frame while we wait and stream: the panel holds this
+      // height instead of growing line by line, so it never re-triggers the
+      // position update and never stutters. Cleared the moment a result lands.
+      element.setAttribute('data-streaming', 'true');
       // Reserved height, three lines at decreasing widths — no spinner, and
       // the label carries no end punctuation.
       body.replaceChildren();
@@ -709,6 +736,9 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     },
 
     beginStreaming: () => {
+      // The reserved streaming height (set here too, since a fast first chunk
+      // can arrive before showLoading ran) keeps the frame still as text fills.
+      element.setAttribute('data-streaming', 'true');
       // Height was already reserved by the skeleton, so replacing it with text
       // causes no layout shift — the words simply appear where the shimmer was.
       bodyWrap.replaceChildren(body);
@@ -721,10 +751,16 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
       // textContent, not append: the smooth renderer hands over the whole
       // string each frame, which keeps the DOM to a single text node.
       body.textContent = partial;
+      // Keep the newest line in view. The panel holds a reserved height while
+      // streaming (see data-streaming), so it never grows and re-fires the
+      // position loop line by line — the words scroll inside a still frame.
+      bodyWrap.scrollTop = bodyWrap.scrollHeight;
     },
 
     showResult: (text, source) => {
       try {
+        // Release the reserved height: the panel now fits the final text.
+        element.removeAttribute('data-streaming');
         original = source;
 
         const previous = versions[index]?.text;
@@ -763,6 +799,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
 
     showError: (error) => {
       try {
+        element.removeAttribute('data-streaming');
         const retry = el('button', {
           class: 'pa-secondary',
           attrs: { type: 'button' },
@@ -836,6 +873,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
 
     showDecline: () => {
       try {
+        element.removeAttribute('data-streaming');
         const dismiss = el('button', {
           class: 'pa-secondary',
           attrs: { type: 'button' },

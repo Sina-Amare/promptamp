@@ -82,6 +82,14 @@ export const PANEL_CSS = `
   animation: pa-panel-in var(--ph-dur-panel) var(--ph-ease-out);
 }
 
+/* While loading and streaming the panel holds a steady reading height, so the
+   words scroll inside a still frame instead of the panel growing line by line
+   (which re-triggers the anchored position update and reads as stutter). It is
+   released the instant a result lands, so the final panel fits its text. */
+.pa-panel[data-streaming='true'] {
+  block-size: min(50vh, 340px);
+}
+
 /* ── header ────────────────────────────────────────────────────── */
 
 .pa-head {

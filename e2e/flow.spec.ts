@@ -71,6 +71,38 @@ test('declines a no-request draft with a gentle note, not a fabricated prompt', 
   await expect(page.locator('.pa-primary')).toBeDisabled();
 });
 
+test('typing in the panel never leaks keystrokes to the page', async ({
+  page,
+}) => {
+  await page.goto('http://localhost:5174/');
+  const field = page.getByTestId('plain-textarea');
+  await field.fill(DRAFT);
+  await field.click();
+  await button(page).click();
+  await waitForResult(page);
+
+  // Count keydowns that reach the page's document (bubble phase) — the phase a
+  // host chat composer listens on to write typed characters into its box.
+  await page.evaluate(() => {
+    const w = window as unknown as { __docKeys: number };
+    w.__docKeys = 0;
+    document.addEventListener('keydown', () => {
+      w.__docKeys += 1;
+    });
+  });
+
+  const adjust = page.locator('.pa-adjust-input');
+  await adjust.click();
+  await adjust.pressSequentially('make it shorter');
+
+  // Every keystroke was handled inside the panel; none escaped to the page.
+  const leaked = await page.evaluate(
+    () => (window as unknown as { __docKeys: number }).__docKeys,
+  );
+  expect(leaked).toBe(0);
+  await expect(adjust).toHaveValue('make it shorter');
+});
+
 test('never appears on a password field', async ({ page }) => {
   await page.goto('http://localhost:5174/');
   await page.getByTestId('password-input').click();
