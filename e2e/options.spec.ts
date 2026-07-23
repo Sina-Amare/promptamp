@@ -209,7 +209,7 @@ test('pins named providers to their own host', async ({
   await expect(target.locator('input[type="url"]')).toHaveCount(0);
 });
 
-test('forks a built-in profile without touching the original', async ({
+test('customizing a built-in profile makes an editable copy, editor open', async ({
   page,
   extensionId,
 }) => {
@@ -218,13 +218,20 @@ test('forks a built-in profile without touching the original', async ({
 
   await page
     .locator('.list-item', { hasText: 'Image' })
-    .getByRole('button', { name: 'Fork' })
+    .getByRole('button', { name: 'Customize' })
     .click();
 
+  // Customizing drops you straight into the editor on the new copy.
   await expect(
-    page.locator('.list-item', { hasText: 'Image (copy)' }),
+    page.locator('.card-title', { hasText: 'Edit Image (my copy)' }),
   ).toBeVisible();
-  // The built-in survives — it is improved by updates and must stay read-only.
+
+  await page.getByRole('button', { name: 'Back' }).click();
+
+  // The copy is now a custom profile; the built-in survives untouched.
+  await expect(
+    page.locator('.list-item', { hasText: 'Image (my copy)' }),
+  ).toBeVisible();
   await expect(
     page.locator('.list-item', { hasText: /^Image —/ }),
   ).toBeVisible();
@@ -245,14 +252,14 @@ test('rejects a profile import that is not a PromptAmp export', async ({
 
 test('behavior tab persists a setting', async ({ page, extensionId }) => {
   await openOptions(page, extensionId);
-  await page.getByRole('tab', { name: 'Behavior' }).click();
+  await page.getByRole('tab', { name: 'Preferences' }).click();
 
   const cap = page.locator('input[type="number"]');
   await cap.fill('25');
   await cap.blur();
 
   await page.reload();
-  await page.getByRole('tab', { name: 'Behavior' }).click();
+  await page.getByRole('tab', { name: 'Preferences' }).click();
   await expect(page.locator('input[type="number"]')).toHaveValue('25');
 });
 
@@ -261,7 +268,7 @@ test('persists an enhanced-prompt language across reloads', async ({
   extensionId,
 }) => {
   await openOptions(page, extensionId);
-  await page.getByRole('tab', { name: 'Behavior' }).click();
+  await page.getByRole('tab', { name: 'Preferences' }).click();
 
   const language = page.locator('input[list="pa-output-languages"]');
   // Empty means "same as my draft" — the field says so rather than hiding it
@@ -272,7 +279,7 @@ test('persists an enhanced-prompt language across reloads', async ({
   await language.blur();
 
   await page.reload();
-  await page.getByRole('tab', { name: 'Behavior' }).click();
+  await page.getByRole('tab', { name: 'Preferences' }).click();
   await expect(page.locator('input[list="pa-output-languages"]')).toHaveValue(
     'English',
   );

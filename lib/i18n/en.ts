@@ -107,19 +107,19 @@ export const en = {
   'popup.notAvailable': 'Not available on this page',
 
   /* ── options: chrome ──────────────────────────────────────────── */
-  'tab.providers': 'Providers',
+  'tab.providers': 'AI keys',
   'tab.profiles': 'Profiles',
-  'tab.behavior': 'Behavior',
+  'tab.behavior': 'Preferences',
   'tab.history': 'History',
   'tab.about': 'About',
 
-  /* One-line plain-language intro at the top of each settings tab. */
+  /* Plain-language intro at the top of each settings tab — what it is FOR. */
   'intro.providers':
-    'Connect one or more AI providers with your own API keys. PromptAmp uses the first that works and falls back to the rest.',
+    'PromptAmp works with your own AI key — your drafts go straight to that AI, never through a server of ours. Add a provider and paste its key to get started. Add more than one and it automatically falls back when the first is busy or out of credit.',
   'intro.profiles':
-    'Profiles decide how a draft is rewritten. The built-ins are chosen automatically per site; fork one to make it your own.',
+    'A profile is how PromptAmp rewrites your draft — a different one for chatting, image prompts, code, and so on. It picks the right profile for each site automatically. To change how one writes, make your own copy.',
   'intro.behavior':
-    'How PromptAmp behaves: which profile and language it uses, its daily limit, and where it stays hidden.',
+    'Everyday options: the profile and language PromptAmp uses by default, a daily limit so it can’t run up your bill, and where to switch it off.',
   'intro.history': 'Every enhancement you have run, kept on this device only.',
   'common.save': 'Save',
   'common.saved': 'Saved',
@@ -184,11 +184,12 @@ export const en = {
   /* ── options: profiles ────────────────────────────────────────── */
   'profiles.builtin': 'Built-in profiles',
   'profiles.builtinHint':
-    'Improved with each update, so they are read-only. Fork one to customise it.',
-  'profiles.mine': 'Your profiles',
-  'profiles.empty': 'No custom profiles yet.',
-  'profiles.fork': 'Fork',
-  'profiles.copySuffix': '{name} (copy)',
+    'These come with PromptAmp and get better with each update, so they can’t be edited directly. To change how one writes, press Customize to make your own editable copy.',
+  'profiles.mine': 'Your custom profiles',
+  'profiles.empty':
+    'None yet — press Customize on a profile above to make one you can edit.',
+  'profiles.fork': 'Customize',
+  'profiles.copySuffix': '{name} (my copy)',
   'profiles.transfer': 'Import / export',
   'profiles.import': 'Import',
   'profiles.export': 'Export custom profiles',
@@ -201,9 +202,9 @@ export const en = {
   'profiles.saveFailed': 'Could not save — check the name and prompt length.',
 
   /* ── options: behavior ────────────────────────────────────────── */
-  'behavior.general': 'General',
-  'behavior.autoProfile': 'Pick a profile automatically from the site',
-  'behavior.defaultProfile': 'Default profile',
+  'behavior.general': 'Defaults',
+  'behavior.autoProfile': 'Automatically pick the best profile for each site',
+  'behavior.defaultProfile': 'Default profile (used when auto-pick is off)',
   'behavior.hideEverywhere': 'Hide PromptAmp everywhere',
   'behavior.outputLanguage': 'Enhanced prompt language',
   'behavior.outputLanguagePlaceholder': 'Same language as my draft',

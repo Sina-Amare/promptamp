@@ -927,30 +927,30 @@ async function profilesTab(): Promise<HTMLElement> {
 }
 
 function builtinRow(profile: Profile, custom: Profile[]): HTMLElement {
-  const fork = el('button', {
+  const customize = el('button', {
     class: 'secondary',
     text: t('profiles.fork'),
     attrs: { type: 'button' },
   });
-  fork.addEventListener('click', () => {
+  customize.addEventListener('click', () => {
     void (async () => {
-      // A distinct id, so the fork is a new profile and the built-in survives
+      // A distinct id, so the copy is a new profile and the built-in survives
       // the next update untouched.
       let id = `${profile.id}-copy`;
       let n = 2;
       while (custom.some((p) => p.id === id))
         id = `${profile.id}-copy-${String(n++)}`;
 
-      await sendMessage({
-        type: 'profiles:save',
-        profile: {
-          ...profile,
-          id,
-          name: `${profile.name} (copy)`,
-          builtIn: false,
-        },
-      });
-      await renderPanel();
+      const copy: Profile = {
+        ...profile,
+        id,
+        name: t('profiles.copySuffix', { name: profile.name }),
+        builtIn: false,
+      };
+      await sendMessage({ type: 'profiles:save', profile: copy });
+      // Open the editor straight away — "customize" means "edit", so drop the
+      // user where the editing actually happens instead of in a list.
+      panel.replaceChildren(profileEditor(copy));
     })();
   });
 
@@ -958,7 +958,7 @@ function builtinRow(profile: Profile, custom: Profile[]): HTMLElement {
     class: 'list-item',
     children: [
       el('span', { text: `${profile.name} — ${profile.description}` }),
-      fork,
+      customize,
     ],
   });
 }
@@ -1041,8 +1041,11 @@ function profileEditor(profile: Profile): HTMLElement {
   return el('section', {
     class: 'card',
     children: [
-      el('span', { class: 'card-title', text: `Edit ${profile.name}` }),
-      el('label', { children: [el('span', { text: 'Name' }), name] }),
+      el('span', {
+        class: 'card-title',
+        text: t('profiles.editTitle', { name: profile.name }),
+      }),
+      el('label', { children: [el('span', { text: t('common.name') }), name] }),
       el('label', {
         children: [
           el('span', { text: t('profiles.description') }),
