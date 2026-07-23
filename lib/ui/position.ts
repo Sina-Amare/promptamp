@@ -250,9 +250,8 @@ function overText(field: Element, point: Point, size: number): boolean {
   const xs = [point.left + 4, point.left + size / 2, point.left + size - 4];
   for (const x of xs) {
     const node = doc.caretRangeFromPoint?.(x, y)?.startContainer;
-    if (!node || node.nodeType !== Node.TEXT_NODE || !field.contains(node)) {
-      continue;
-    }
+    if (!node || node.nodeType !== Node.TEXT_NODE) continue;
+    if (!field.contains(node)) continue;
     if (!(node.textContent ?? '').trim()) continue;
     const range = doc.createRange();
     range.selectNodeContents(node);
