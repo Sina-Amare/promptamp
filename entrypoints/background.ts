@@ -238,7 +238,10 @@ async function handle(
     }
 
     case 'connection:test':
-      return testConnection(message.connectionId);
+      return testConnection(message.connectionId, {
+        ...(message.apiKey !== undefined ? { apiKey: message.apiKey } : {}),
+        ...(message.model !== undefined ? { model: message.model } : {}),
+      });
 
     case 'history:list':
       return getHistory();

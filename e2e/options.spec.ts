@@ -209,6 +209,25 @@ test('pins named providers to their own host', async ({
   await expect(target.locator('input[type="url"]')).toHaveCount(0);
 });
 
+test('shows one model control and guides a keyless test', async ({
+  page,
+  extensionId,
+}) => {
+  await openOptions(page, extensionId);
+  const target = await addConnection(page, 'OpenAI');
+
+  // Exactly one model control — the text field — never a field AND a duplicate
+  // dropdown (the bug). No list is cached without a key, so no <select>.
+  await expect(target.getByRole('textbox', { name: 'Model' })).toBeVisible();
+  await expect(target.getByRole('combobox', { name: 'Model' })).toHaveCount(0);
+  await expect(target.locator('.field-note')).toContainText('Save your key');
+
+  // Test with no key is calm guidance, not a red rejection.
+  await target.getByRole('button', { name: 'Test', exact: true }).click();
+  await expect(target.locator('.status')).toHaveText('Add your API key first.');
+  await expect(target.locator('.status')).toHaveClass(/info/);
+});
+
 test('customizing a built-in profile makes an editable copy, editor open', async ({
   page,
   extensionId,
@@ -270,19 +289,50 @@ test('persists an enhanced-prompt language across reloads', async ({
   await openOptions(page, extensionId);
   await page.getByRole('tab', { name: 'Preferences' }).click();
 
-  const language = page.locator('input[list="pa-output-languages"]');
-  // Empty means "same as my draft" — the field says so rather than hiding it
-  // behind a mode toggle.
-  await expect(language).toHaveAttribute('placeholder', /Same language/);
+  const language = page.getByRole('combobox', {
+    name: 'Enhanced prompt language',
+  });
+  // Empty value = "same as my draft"; it is the first, selected option rather
+  // than a mode toggle.
+  await expect(language).toHaveValue('');
+  await expect(language.locator('option').first()).toHaveText(
+    /Same language as my draft/,
+  );
 
-  await language.fill('English');
-  await language.blur();
+  await language.selectOption({ label: 'English' });
 
   await page.reload();
   await page.getByRole('tab', { name: 'Preferences' }).click();
-  await expect(page.locator('input[list="pa-output-languages"]')).toHaveValue(
-    'English',
-  );
+  await expect(
+    page.getByRole('combobox', { name: 'Enhanced prompt language' }),
+  ).toHaveValue('English');
+});
+
+test('offers a free-text language via the Other option', async ({
+  page,
+  extensionId,
+}) => {
+  await openOptions(page, extensionId);
+  await page.getByRole('tab', { name: 'Preferences' }).click();
+
+  const language = page.getByRole('combobox', {
+    name: 'Enhanced prompt language',
+  });
+  const other = page.getByRole('textbox', { name: 'Enhanced prompt language' });
+  await expect(other).toBeHidden();
+
+  // "Other…" reveals a free-text field for a language no fixed list holds.
+  await language.selectOption({ label: 'Other…' });
+  await expect(other).toBeVisible();
+  await other.fill('Brazilian Portuguese');
+  await other.blur();
+
+  // It survives a reload, reopening on "Other…" with the value intact.
+  await page.reload();
+  await page.getByRole('tab', { name: 'Preferences' }).click();
+  await expect(
+    page.getByRole('textbox', { name: 'Enhanced prompt language' }),
+  ).toHaveValue('Brazilian Portuguese');
 });
 
 test('history tab states that nothing leaves the device', async ({

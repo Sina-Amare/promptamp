@@ -14,7 +14,7 @@ import type {
   Profile,
   ProviderId,
 } from '../../lib/storage/schemas';
-import { el } from '../../lib/ui/host';
+import { el, svg } from '../../lib/ui/host';
 
 /**
  * The settings page.
@@ -264,85 +264,49 @@ const modelCache = new Map<string, ModelInfo[]>();
 const usageCache = new Map<string, UsageInfo>();
 
 /**
- * Fetch this connection's models into the cache.
- *
- * `quiet` (used by the auto-load after a save) suppresses the failure flash so
- * it never clobbers the "Saved" confirmation. `skipRender` lets the save flow
- * cache first and repaint once, avoiding a second render that would race the
- * flash.
+ * Fetch this connection's models into the cache. Pure cache populator — it
+ * never renders or flashes, so callers repaint only the slot that changed and
+ * a typed-but-unsaved key elsewhere in the card is never wiped. Returns whether
+ * a non-empty list came back.
  */
-async function loadModelsFor(
-  connectionId: string,
-  opts: { quiet?: boolean; skipRender?: boolean } = {},
-): Promise<void> {
+async function loadModelsFor(connectionId: string): Promise<boolean> {
   try {
     const models = await sendMessage({
       type: 'connection:models',
       connectionId,
     });
     modelCache.set(connectionId, models);
-    if (models.length === 0 && !opts.quiet) {
-      flash = {
-        cardTitle: connectionId,
-        text: 'No models returned — check the key or server URL.',
-        kind: 'err',
-      };
-    }
+    return models.length > 0;
   } catch {
-    if (!opts.quiet) {
-      flash = {
-        cardTitle: connectionId,
-        text: 'Could not load models.',
-        kind: 'err',
-      };
-    }
+    return false;
   }
-  if (!opts.skipRender) await renderPanel();
 }
 
-/** Fetch this connection's usage into the cache, then repaint. */
-async function loadUsageFor(connectionId: string): Promise<void> {
+/** Fetch this connection's usage into the cache. Cache-only; see above. */
+async function loadUsageFor(connectionId: string): Promise<boolean> {
   try {
     usageCache.set(
       connectionId,
       await sendMessage({ type: 'connection:usage', connectionId }),
     );
+    return true;
   } catch {
-    flash = {
-      cardTitle: connectionId,
-      text: 'Could not read usage.',
-      kind: 'err',
-    };
+    return false;
   }
-  await renderPanel();
 }
 
 /**
- * The model dropdown, built from the cache. Free and paid are split into their
- * own groups where the provider reports pricing (OpenRouter); otherwise one
- * group. Selecting sets the text field, which stays the source of truth so a
- * custom endpoint can still take a typed-in model id.
+ * A bare <select> of the cached models — free and paid split into their own
+ * groups where the provider reports pricing (OpenRouter), otherwise one group.
+ * No placeholder option and no change listener: the caller owns both, because
+ * it also injects the "current" and "custom" options and drives the source of
+ * truth (the model text input).
  */
-function modelPicker(
-  connectionId: string,
-  modelInput: HTMLInputElement,
-): HTMLElement | null {
-  const models = modelCache.get(connectionId);
-  if (!models || models.length === 0) return null;
-
+function buildModelSelect(models: ModelInfo[]): HTMLSelectElement {
   const opt = (m: ModelInfo): HTMLElement =>
     el('option', { text: m.id, attrs: { value: m.id } });
 
-  const select = el('select', {
-    attrs: { 'aria-label': 'Choose a model' },
-  });
-  select.append(
-    el('option', {
-      text: `Choose a model (${String(models.length)})…`,
-      attrs: { value: '' },
-    }),
-  );
-
+  const select = el('select', { attrs: { 'aria-label': t('common.model') } });
   if (models.some((m) => m.free !== undefined)) {
     const free = models.filter((m) => m.free);
     const paid = models.filter((m) => !m.free);
@@ -370,27 +334,33 @@ function modelPicker(
       }),
     );
   }
-
-  select.value = modelInput.value;
-  select.addEventListener('change', () => {
-    if (select.value) modelInput.value = select.value;
-  });
   return select;
 }
 
-/** A one-line usage readout, as much as the provider's API is willing to say. */
-function usageLine(connectionId: string): HTMLElement | null {
-  const u = usageCache.get(connectionId);
-  if (!u) return null;
-
+/**
+ * The usage readout as text + optional link + a health signal — as much as the
+ * provider's API is willing to say. `health` drives the status dot: `warn` when
+ * a balance or rate window is nearly exhausted, `muted` when nothing is
+ * reported, `ok` otherwise. Spends no amber — the dot is semantic only.
+ */
+function usageReadout(u: UsageInfo): {
+  text: string;
+  link: HTMLElement | null;
+  health: 'ok' | 'warn' | 'muted';
+} {
   const money = (n: number): string => `$${n.toFixed(n < 1 ? 4 : 2)}`;
+  const low = (remaining: number, limit: number): boolean =>
+    remaining === 0 || (limit > 0 && remaining / limit < 0.15);
+
   let text: string;
   let link: HTMLElement | null = null;
+  let health: 'ok' | 'warn' | 'muted' = 'ok';
 
   if (u.kind === 'credit') {
     if (u.limitUsd !== null && u.remainingUsd !== null) {
       // A funded account — a dollar balance is the meaningful number.
       text = `${money(u.remainingUsd)} of ${money(u.limitUsd)} credit left`;
+      if (low(u.remainingUsd, u.limitUsd)) health = 'warn';
     } else if (u.freeTier) {
       // On the free tier, spend is meaningless — what matters is the per-day
       // request cap, which OpenRouter does not expose through its API. Say that
@@ -415,6 +385,13 @@ function usageLine(connectionId: string): HTMLElement | null {
           ? `${String(u.requestsRemaining)} of ${String(u.requestsLimit)} requests left`
           : `${String(u.requestsRemaining)} requests left`,
       );
+      if (
+        u.requestsLimit !== undefined
+          ? low(u.requestsRemaining, u.requestsLimit)
+          : u.requestsRemaining === 0
+      ) {
+        health = 'warn';
+      }
     }
     if (u.tokensRemaining !== undefined) {
       parts.push(`${u.tokensRemaining.toLocaleString()} tokens left`);
@@ -425,6 +402,7 @@ function usageLine(connectionId: string): HTMLElement | null {
     text = parts.join(' · ') || 'Rate limits reported';
   } else {
     text = "This provider's API doesn't report usage.";
+    health = 'muted';
     if (u.hintUrl) {
       link = el('a', {
         text: ' Check in Google AI Studio →',
@@ -433,10 +411,7 @@ function usageLine(connectionId: string): HTMLElement | null {
     }
   }
 
-  return el('p', {
-    class: 'usage',
-    children: [el('span', { text }), ...(link ? [link] : [])],
-  });
+  return { text, link, health };
 }
 
 function connectionCard(
@@ -468,17 +443,30 @@ function connectionCard(
     },
   });
 
+  // The single source of truth for the chosen model. It is never rebuilt — the
+  // model <select> is a shortcut that writes into it — so a typed-but-unsaved
+  // custom id survives every in-place repaint. Shown alone only when there is
+  // no list to pick from, or when the user asks to type a custom id.
   const modelInput = el('input', {
-    attrs: { type: 'text', spellcheck: 'false' },
+    class: 'reveal',
+    attrs: {
+      type: 'text',
+      spellcheck: 'false',
+      placeholder: config.defaultModel,
+      'aria-label': t('common.model'),
+    },
   });
   modelInput.value = connection.model;
+  modelInput.addEventListener('change', () => {
+    modelInput.value = modelInput.value.trim();
+  });
 
   const baseUrlInput = el('input', {
     attrs: { type: 'url', placeholder: config.baseUrl, spellcheck: 'false' },
   });
   if (connection.baseUrl) baseUrlInput.value = connection.baseUrl;
 
-  const setStatus = (text: string, kind: '' | 'ok' | 'err'): void => {
+  const setStatus = (text: string, kind: '' | 'ok' | 'err' | 'info'): void => {
     status.textContent = text;
     status.className = `status ${kind}`;
   };
@@ -522,12 +510,12 @@ function connectionCard(
       keyInput.value = '';
 
       // The moment a key is in place, fetch the model list so the user picks
-      // from a real dropdown instead of typing an id. Cache first, then set the
-      // flash and repaint once — so "Saved" always shows and a failed model
-      // fetch never overwrites it (quiet).
+      // from a real dropdown instead of typing an id. Populate the cache first,
+      // then flash "Saved" and repaint once — the re-render reads the cache and
+      // shows the dropdown, and a failed fetch quietly leaves the text field.
       const hasKey = keyInputHadValue || connection.hasKey;
       if (hasKey || !config.requiresKey) {
-        await loadModelsFor(connection.id, { quiet: true, skipRender: true });
+        await loadModelsFor(connection.id);
       }
 
       flash = { cardTitle: connection.id, text: t('common.saved'), kind: 'ok' };
@@ -542,10 +530,20 @@ function connectionCard(
   });
   test.addEventListener('click', () => {
     void (async () => {
+      // Test what the user is looking at. A typed-but-unsaved key is tested as
+      // the candidate, so "Test before Save" just works. With no key anywhere,
+      // say so as calm guidance — never a red "rejected".
+      const typedKey = keyInput.value.trim();
+      if (!typedKey && !connection.hasKey && config.requiresKey) {
+        setStatus(t('conn.testNeedsKey'), 'info');
+        return;
+      }
       setStatus(t('common.testing'), '');
       const result = await sendMessage({
         type: 'connection:test',
         connectionId: connection.id,
+        ...(typedKey ? { apiKey: typedKey } : {}),
+        ...(modelInput.value.trim() ? { model: modelInput.value.trim() } : {}),
       });
       setStatus(
         result.ok
@@ -558,29 +556,166 @@ function connectionCard(
     })();
   });
 
-  const fetchModels = el('button', {
-    class: 'quiet',
-    text: modelCache.has(connection.id)
-      ? t('conn.reloadModels')
-      : t('conn.loadModels'),
+  // ── The model control + usage: one self-contained "connection health"
+  // instrument. Reload and Check-usage repaint only their own slot — never the
+  // whole panel — so a typed-but-unsaved key elsewhere in the card survives.
+  const control = el('div', { class: 'field-control' });
+  const caption = el('p', { class: 'field-note' });
+  const reloadLabel = el('span');
+  const reload = el('button', {
+    class: 'link-btn',
     attrs: { type: 'button' },
+    children: [
+      el('span', {
+        class: 'reload-icon',
+        children: [
+          svg('svg', { viewBox: '0 0 16 16', width: '12', height: '12' }, [
+            svg('path', {
+              d: 'M13 8a5 5 0 1 1-1.5-3.5M13 2v3h-3',
+              fill: 'none',
+              stroke: 'currentColor',
+              'stroke-width': '1.6',
+              'stroke-linecap': 'round',
+              'stroke-linejoin': 'round',
+            }),
+          ]),
+        ],
+      }),
+      reloadLabel,
+    ],
   });
-  fetchModels.addEventListener('click', () => {
-    fetchModels.disabled = true;
-    fetchModels.textContent = t('conn.loadingModels');
-    void loadModelsFor(connection.id);
+  const usageRow = el('div', { class: 'usage-row' });
+  const health = el('div', {
+    class: 'conn-health',
+    children: [
+      el('div', {
+        class: 'field-head',
+        children: [
+          el('span', { class: 'field-label', text: t('common.model') }),
+          reload,
+        ],
+      }),
+      control,
+      caption,
+      usageRow,
+    ],
   });
 
-  const checkUsage = el('button', {
-    class: 'quiet',
-    text: t('conn.checkUsage'),
-    attrs: { type: 'button' },
+  // Repaints ONLY the model control + its caption, from the cache. One of
+  // {select, text input} is in the DOM at a time — never both (the old
+  // duplicate). A saved/typed id absent from the list is kept as a "· current"
+  // option so it can never silently vanish.
+  function paintModel(): void {
+    const models = modelCache.get(connection.id);
+    const canLoad = connection.hasKey || !config.requiresKey;
+    reloadLabel.textContent = models?.length
+      ? t('conn.reloadModels')
+      : t('conn.loadModels');
+    reload.disabled = !canLoad;
+    health.classList.remove('loading');
+
+    if (!models?.length) {
+      control.replaceChildren(modelInput);
+      caption.replaceChildren(
+        el('span', {
+          text: canLoad ? t('conn.modelHintLoad') : t('conn.modelHintKey'),
+        }),
+      );
+      return;
+    }
+
+    const select = buildModelSelect(models);
+    const inList = models.some((m) => m.id === modelInput.value);
+    if (!inList && modelInput.value) {
+      select.insertBefore(
+        el('option', {
+          text: `${modelInput.value} · current`,
+          attrs: { value: modelInput.value },
+        }),
+        select.firstChild,
+      );
+    }
+    select.append(
+      el('option', {
+        text: t('conn.modelCustom'),
+        attrs: { value: '__custom__' },
+      }),
+    );
+    select.value = modelInput.value;
+    control.replaceChildren(select);
+    caption.replaceChildren(
+      el('span', { text: t('conn.modelsFound', { n: String(models.length) }) }),
+    );
+
+    select.addEventListener('change', () => {
+      if (select.value === '__custom__') {
+        // Leaving a listed pick starts a fresh field; an already-typed custom
+        // id is kept.
+        modelInput.value = inList ? '' : modelInput.value;
+        control.replaceChildren(modelInput);
+        modelInput.focus();
+        const back = el('button', {
+          class: 'link-btn',
+          text: t('conn.modelFromList'),
+          attrs: { type: 'button' },
+        });
+        back.addEventListener('click', paintModel);
+        caption.replaceChildren(back);
+      } else {
+        modelInput.value = select.value;
+      }
+    });
+  }
+
+  // Repaints ONLY the usage row: a health dot, the readout, and a Check-usage /
+  // Refresh action pinned to the trailing edge.
+  function paintUsage(): void {
+    const u = usageCache.get(connection.id);
+    const check = el('button', {
+      class: 'link-btn',
+      attrs: { type: 'button' },
+      text: u ? t('conn.checkUsageRefresh') : t('conn.checkUsage'),
+    });
+    check.addEventListener('click', () => {
+      check.disabled = true;
+      check.textContent = t('conn.checkingUsage');
+      void (async () => {
+        const ok = await loadUsageFor(connection.id);
+        if (!ok) setStatus(t('conn.usageError'), 'err');
+        paintUsage();
+      })();
+    });
+    if (!u) {
+      usageRow.replaceChildren(
+        el('span', { class: 'usage-dot muted' }),
+        el('span', { class: 'usage-text', text: '—' }),
+        check,
+      );
+      return;
+    }
+    const { text, link, health: dot } = usageReadout(u);
+    usageRow.replaceChildren(
+      el('span', { class: `usage-dot ${dot}` }),
+      el('span', { class: 'usage-text', text }),
+      ...(link ? [link] : []),
+      check,
+    );
+  }
+
+  reload.addEventListener('click', () => {
+    if (reload.disabled) return;
+    reloadLabel.textContent = t('conn.loadingModels');
+    reload.disabled = true;
+    health.classList.add('loading');
+    void (async () => {
+      const ok = await loadModelsFor(connection.id);
+      if (!ok) setStatus(t('conn.modelsError'), 'err');
+      paintModel();
+    })();
   });
-  checkUsage.addEventListener('click', () => {
-    checkUsage.disabled = true;
-    checkUsage.textContent = t('conn.checkingUsage');
-    void loadUsageFor(connection.id);
-  });
+
+  paintModel();
+  paintUsage();
 
   const remove = el('button', {
     class: 'danger',
@@ -598,7 +733,7 @@ function connectionCard(
   });
 
   const actions = el('div', {
-    class: 'row',
+    class: 'row actions',
     children: [save, test, remove],
   });
 
@@ -649,7 +784,6 @@ function connectionCard(
           reorderControls(connection, index, all),
         ],
       }),
-      el('p', { class: 'hint', text: `${config.label} · ${connection.model}` }),
       PROVIDER_NOTES[connection.providerId]
         ? el('p', {
             class: 'notice',
@@ -672,12 +806,7 @@ function connectionCard(
             ],
           })
         : null,
-      el('label', {
-        children: [el('span', { text: t('common.model') }), modelInput],
-      }),
-      modelPicker(connection.id, modelInput),
-      el('div', { class: 'row', children: [fetchModels, checkUsage] }),
-      usageLine(connection.id),
+      health,
       actions,
       status,
       advanced,
@@ -1102,30 +1231,76 @@ async function behaviorTab(): Promise<HTMLElement> {
     });
   });
 
-  // A combobox rather than a select: "Brazilian Portuguese" and "formal
-  // Japanese" are reasonable answers, and no fixed list contains them.
-  const outputLanguage = el('input', {
+  // A reliable native <select> beats a datalist combobox (which renders
+  // inconsistently and often shows nothing on click). An "Other…" option
+  // reveals a text field, so "Brazilian Portuguese" or "formal Japanese" —
+  // which no fixed list contains — are still one type away.
+  const OTHER = '__other__';
+  const savedLang = settings.outputLanguageOverride;
+
+  const langSelect = el('select', {
+    attrs: { 'aria-label': t('behavior.outputLanguage') },
+  });
+  langSelect.append(
+    el('option', {
+      text: t('behavior.outputLanguagePlaceholder'),
+      attrs: { value: '' },
+    }),
+    ...OUTPUT_LANGUAGES.map((name) =>
+      el('option', { text: name, attrs: { value: name } }),
+    ),
+    el('option', { text: t('lang.other'), attrs: { value: OTHER } }),
+  );
+
+  const langOther = el('input', {
+    class: 'reveal',
     attrs: {
       type: 'text',
-      list: 'pa-output-languages',
       spellcheck: 'false',
       maxlength: '40',
-      placeholder: t('behavior.outputLanguagePlaceholder'),
+      placeholder: t('lang.otherPlaceholder'),
+      'aria-label': t('behavior.outputLanguage'),
     },
   });
-  outputLanguage.value = settings.outputLanguageOverride;
-  outputLanguage.addEventListener('change', () => {
+  langOther.hidden = true;
+
+  // Initial state — a previously-saved custom language reopens on "Other…" with
+  // its input shown and pre-filled, so nothing ever looks lost.
+  if (!savedLang) {
+    langSelect.value = '';
+  } else if (OUTPUT_LANGUAGES.includes(savedLang)) {
+    langSelect.value = savedLang;
+  } else {
+    langSelect.value = OTHER;
+    langOther.value = savedLang;
+    langOther.hidden = false;
+  }
+
+  const patchLang = (value: string): void => {
     void sendMessage({
       type: 'settings:patch',
-      patch: { outputLanguageOverride: outputLanguage.value.trim() },
+      patch: { outputLanguageOverride: value },
     });
-  });
+  };
 
-  const languageList = el('datalist', {
-    attrs: { id: 'pa-output-languages' },
-    children: OUTPUT_LANGUAGES.map((name) =>
-      el('option', { attrs: { value: name } }),
-    ),
+  langSelect.addEventListener('change', () => {
+    if (langSelect.value === OTHER) {
+      langOther.hidden = false;
+      langOther.focus(); // wait for the typed value before patching
+    } else {
+      langOther.hidden = true;
+      langOther.value = '';
+      patchLang(langSelect.value); // '' = same as draft, or a curated language
+    }
+  });
+  langOther.addEventListener('change', () => {
+    const value = langOther.value.trim();
+    if (!value) {
+      // Emptied under "Other…" honestly means "same as my draft".
+      langSelect.value = '';
+      langOther.hidden = true;
+    }
+    patchLang(value);
   });
 
   const softCap = el('input', {
@@ -1159,11 +1334,11 @@ async function behaviorTab(): Promise<HTMLElement> {
           el('label', {
             children: [
               el('span', { text: t('behavior.outputLanguage') }),
-              outputLanguage,
-              languageList,
+              langSelect,
+              langOther,
               el('span', {
                 class: 'hint',
-                text: 'Write your draft in any language and get the enhanced prompt in this one. Leave it empty to keep your draft’s language — image and video prompts still go out in English, which is what those models are trained on.',
+                text: t('behavior.outputLanguageHint'),
               }),
             ],
           }),

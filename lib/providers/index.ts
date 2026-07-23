@@ -267,15 +267,25 @@ async function probeRateLimitHeaders(
  */
 export async function testConnection(
   connectionId: string,
-  timeoutMs = 15_000,
+  opts: { apiKey?: string; model?: string; timeoutMs?: number } = {},
 ): Promise<ProviderTestResult> {
+  const { apiKey, model, timeoutMs = 15_000 } = opts;
   const connection = await getConnection(connectionId);
   if (!connection) {
     return { ok: false, error: toSafeError(errorFor('bad-key')) };
   }
 
-  const config = getProvider(connection.providerId);
-  if (config.requiresKey && !connection.apiKey) {
+  // Test what the user is looking at, not only what is saved: a key or model
+  // typed into the options form but not yet saved overrides the stored one, so
+  // "Test" answers "does my current setup work?" without a save-first dance.
+  const cred: Connection = {
+    ...connection,
+    ...(apiKey ? { apiKey } : {}),
+    ...(model ? { model } : {}),
+  };
+
+  const config = getProvider(cred.providerId);
+  if (config.requiresKey && !cred.apiKey) {
     return { ok: false, error: toSafeError(errorFor('bad-key')) };
   }
 
@@ -285,8 +295,8 @@ export async function testConnection(
   }, timeoutMs);
 
   try {
-    await chat(connection.providerId, {
-      cred: connection,
+    await chat(cred.providerId, {
+      cred,
       system: 'Reply with the single word OK.',
       user: 'OK',
       maxTokens: 1,
@@ -295,13 +305,13 @@ export async function testConnection(
       // Retry-After tells the user nothing they cannot already see.
       maxRetries: 0,
     });
-    return { ok: true, model: connection.model };
+    return { ok: true, model: cred.model };
   } catch (err) {
     const safe = toSafeError(err);
     // max_tokens: 1 legitimately truncates the reply — that still proves the
     // credential works, which is the only thing this routine is asking.
     if (safe.kind === 'too-long' || safe.kind === 'refusal') {
-      return { ok: true, model: connection.model };
+      return { ok: true, model: cred.model };
     }
     return { ok: false, error: safe };
   } finally {

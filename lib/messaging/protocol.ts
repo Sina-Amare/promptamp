@@ -84,7 +84,14 @@ export type Request =
   | { type: 'siteRule:patch'; origin: string; patch: Partial<SiteRule> }
   | { type: 'profiles:list' }
   | { type: 'profile:resolve'; origin: string }
-  | { type: 'connection:test'; connectionId: string }
+  // A candidate key/model from the options form overrides the stored one, so
+  // "Test" verifies what the user is looking at — even before they save.
+  | {
+      type: 'connection:test';
+      connectionId: string;
+      apiKey?: string;
+      model?: string;
+    }
   | { type: 'history:list' }
   | { type: 'history:clear' }
   | { type: 'session:hideOrigin'; origin: string }
