@@ -100,6 +100,7 @@ export const PANEL_CSS = `
 }
 
 .pa-chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--ph-space-1);
@@ -110,10 +111,73 @@ export const PANEL_CSS = `
   color: var(--ph-text);
   font: var(--ph-type-micro) var(--ph-font);
   cursor: pointer;
+  transition: background var(--ph-dur-micro) var(--ph-ease-standard);
+}
+
+.pa-chip:hover {
+  background: var(--ph-border);
+}
+
+.pa-chip[aria-expanded='true'] {
+  border-color: var(--ph-accent);
 }
 
 .pa-chip-auto {
   color: var(--ph-text-muted);
+}
+
+/* A small dot ahead of a profile name in the menu, tinted by category. */
+.pa-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/*
+ * The chip dropdown (profile picker, output-language picker). One component,
+ * two uses. Appended to the panel and positioned by JS (top/left clamped
+ * inside the panel), so the panel's overflow:hidden — needed for the rounded
+ * corners — never clips it, and no top-layer popover is required.
+ */
+.pa-chip-menu {
+  position: absolute;
+  z-index: var(--ph-z);
+  inline-size: max-content;
+  min-inline-size: 180px;
+  max-inline-size: calc(100% - 16px);
+  overflow-y: auto;
+  padding: var(--ph-space-1);
+  border: 1px solid var(--ph-border);
+  border-radius: var(--ph-radius-chip);
+  background: var(--ph-surface);
+  box-shadow: var(--ph-shadow-panel);
+  list-style: none;
+}
+
+.pa-chip-menu li {
+  display: flex;
+  align-items: center;
+  gap: var(--ph-space-2);
+  padding: 6px var(--ph-space-2);
+  border-radius: 6px;
+  color: var(--ph-text);
+  font: var(--ph-type-micro) var(--ph-font);
+  cursor: pointer;
+}
+
+.pa-chip-menu li:hover,
+.pa-chip-menu li[aria-selected='true'] {
+  background: var(--ph-surface-raised);
+}
+
+.pa-chip-menu li[aria-current='true'] {
+  font-weight: 600;
+}
+
+.pa-chip-menu li:focus-visible {
+  outline: 2px solid var(--ph-accent);
+  outline-offset: -2px;
 }
 
 .pa-carousel {
@@ -159,9 +223,19 @@ export const PANEL_CSS = `
   cursor: pointer;
 }
 
+.pa-icon-btn {
+  transition:
+    background var(--ph-dur-micro) var(--ph-ease-standard),
+    transform var(--ph-dur-micro) var(--ph-ease-standard);
+}
+
 .pa-icon-btn:hover {
   background: var(--ph-surface-raised);
   color: var(--ph-text);
+}
+
+.pa-icon-btn:active {
+  transform: scale(0.94);
 }
 
 /* ── body ──────────────────────────────────────────────────────── */
@@ -276,12 +350,32 @@ export const PANEL_CSS = `
   color: var(--ph-text-muted);
   font: var(--ph-type-micro) var(--ph-font);
   cursor: pointer;
+  transition:
+    background var(--ph-dur-micro) var(--ph-ease-standard),
+    color var(--ph-dur-micro) var(--ph-ease-standard),
+    transform var(--ph-dur-micro) var(--ph-ease-standard);
+}
+
+.pa-pill:hover {
+  border-color: var(--ph-accent);
+  color: var(--ph-text);
+}
+
+.pa-pill:active {
+  transform: scale(0.97);
 }
 
 .pa-pill[aria-pressed='true'] {
   background: var(--ph-accent);
   border-color: var(--ph-accent);
   color: var(--ph-accent-fg);
+}
+
+/* The Structured chip carries the amber "amplify" accent on hover, marking it
+   as the one pill that changes the *shape* of the output, not just a tweak. */
+.pa-pill.pa-pill-structured:hover {
+  border-color: var(--ph-action);
+  color: var(--ph-text);
 }
 
 .pa-adjust-input {
@@ -304,15 +398,28 @@ export const PANEL_CSS = `
   background: var(--ph-surface);
 }
 
-/* Exactly one visually-primary element on the surface. */
+/* Exactly one visually-primary element on the surface — the amber "amplify"
+   commit, per the logo's accent. Dark ink on amber holds contrast. */
 .pa-primary {
   padding: 7px var(--ph-space-4);
-  border: 1px solid var(--ph-accent);
+  border: 1px solid var(--ph-action);
   border-radius: var(--ph-radius-chip);
-  background: var(--ph-accent);
-  color: var(--ph-accent-fg);
+  background: var(--ph-action);
+  color: var(--ph-action-fg);
   font: 600 var(--ph-type-micro) var(--ph-font);
   cursor: pointer;
+  transition:
+    background var(--ph-dur-micro) var(--ph-ease-standard),
+    transform var(--ph-dur-micro) var(--ph-ease-standard);
+}
+
+.pa-primary:hover {
+  background: var(--ph-action-hover);
+  border-color: var(--ph-action-hover);
+}
+
+.pa-primary:active {
+  transform: scale(0.98);
 }
 
 .pa-secondary {
@@ -323,6 +430,17 @@ export const PANEL_CSS = `
   color: var(--ph-text);
   font: var(--ph-type-micro) var(--ph-font);
   cursor: pointer;
+  transition:
+    background var(--ph-dur-micro) var(--ph-ease-standard),
+    transform var(--ph-dur-micro) var(--ph-ease-standard);
+}
+
+.pa-secondary:hover {
+  background: var(--ph-surface-raised);
+}
+
+.pa-secondary:active {
+  transform: scale(0.98);
 }
 
 .pa-quiet {

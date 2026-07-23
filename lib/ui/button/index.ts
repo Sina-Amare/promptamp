@@ -5,8 +5,8 @@ import {
   alertIcon,
   checkIcon,
   closeIcon,
-  honeIcon,
   loadingArc,
+  promptMark,
   restingDots,
 } from './icon';
 
@@ -62,7 +62,7 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
   let doneTimer: ReturnType<typeof setTimeout> | undefined;
 
   const iconSlot = el('span', { class: 'pa-icon' });
-  iconSlot.append(honeIcon());
+  iconSlot.append(promptMark());
 
   const dot = el('span', { class: 'pa-dot' });
 
@@ -132,7 +132,7 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
       case 'ghost':
       case 'idle':
       case 'typing':
-        return honeIcon();
+        return promptMark();
     }
   }
 

@@ -318,12 +318,22 @@ describe('clean', () => {
 });
 
 describe('profiles', () => {
-  it('ships seven built-ins, all marked built-in', () => {
-    expect(BUILTIN_PROFILES).toHaveLength(7);
+  it('ships eight built-ins, all marked built-in', () => {
+    expect(BUILTIN_PROFILES).toHaveLength(8);
     for (const profile of BUILTIN_PROFILES) {
       expect(profile.builtIn).toBe(true);
       expect(profile.systemPrompt.length).toBeGreaterThan(500);
     }
+  });
+
+  it('includes the opt-in Structured profile', () => {
+    const structured = builtinProfile('structured');
+    expect(structured?.name).toBe('Structured');
+    // It scaffolds sections but must still forbid fabrication and the
+    // enumerate-questions anti-pattern.
+    expect(structured?.systemPrompt).toMatch(/Role|Task|Requirements/);
+    expect(structured?.systemPrompt).toMatch(/never.*invent|never.*fabricate/i);
+    expect(structured?.systemPrompt).toContain('ask me anything you need');
   });
 
   it('anchors every prompt to the draft wrapper and the output rule', () => {

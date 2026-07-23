@@ -191,8 +191,11 @@ test('offers a custom OpenAI-compatible endpoint with a base URL', async ({
 
   // The whole point: any provider that speaks the OpenAI wire format.
   await expect(target.locator('.notice')).toContainText('LiteLLM proxy');
-  await expect(target.locator('input[type="url"]')).toBeVisible();
   await expect(target.locator('input[type="password"]')).toBeVisible();
+
+  // The base URL lives under Advanced (progressive disclosure) — expand it.
+  await target.locator('summary', { hasText: 'Advanced' }).click();
+  await expect(target.locator('input[type="url"]')).toBeVisible();
 });
 
 test('pins named providers to their own host', async ({

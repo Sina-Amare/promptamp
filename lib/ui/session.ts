@@ -18,6 +18,7 @@ import {
   type EnhanceServerMessage,
   type SafeError,
 } from '../messaging/protocol';
+import { sendMessage } from '../messaging/client';
 import { t } from '../i18n';
 import { el } from './host';
 import { createPanel, type PanelHandle } from './panel';
@@ -71,6 +72,40 @@ export function createSession(
   let cleanupPosition: (() => void) | undefined;
   let stream: SmoothStream | null = null;
   let closed = false;
+  let chipsLoaded = false;
+  // The Structured chip is a one-off transform, not a profile change — so its
+  // run must leave the profile chip showing the site's persistent profile,
+  // exactly like the Shorter/Longer adjust chips do.
+  let structuredOneOff = false;
+
+  /**
+   * Populate the panel's profile + language chips. One round trip, once — the
+   * chips fall back to the `accepted` echo if this races or fails, so a slow
+   * worker just means an empty menu for a moment, never a broken panel.
+   */
+  function loadChips(target: PanelHandle): void {
+    if (chipsLoaded) return;
+    chipsLoaded = true;
+    void (async () => {
+      try {
+        const [profiles, settings] = await Promise.all([
+          sendMessage({ type: 'profiles:list' }),
+          sendMessage({ type: 'settings:get' }),
+        ]);
+        target.setProfileOptions(
+          profiles.map((p) => ({
+            id: p.id,
+            name: p.name,
+            category: p.category,
+          })),
+          '',
+        );
+        target.setLanguage(settings.outputLanguageOverride);
+      } catch {
+        // Best effort; the chips still work off the accepted echo.
+      }
+    })();
+  }
 
   function ensurePanel(): PanelHandle {
     if (panel) return panel;
@@ -80,19 +115,53 @@ export function createSession(
         void accept(text);
       },
       onRetry: (adjust) => {
-        start(adjust);
+        run(adjust ? { adjust } : {});
       },
       onCopy: (text) => {
         void navigator.clipboard.writeText(text);
       },
       onDiscard: close,
       onStop: stop,
-      onProfileClick: () => {
-        // Profile switching lands with the options surface in Phase 7; the
-        // chip is already the canonical place for it (UX-SPEC §3).
+      // A profile chosen from the chip: pin it for this site (so it sticks) and
+      // re-run in it now. `profileId` on the run wins the race against the pin.
+      onProfilePick: (profileId) => {
+        void (async () => {
+          try {
+            await sendMessage({
+              type: 'siteRule:patch',
+              origin: deps.origin,
+              patch: { pinnedProfileId: profileId },
+            });
+          } catch {
+            // The run below still uses profileId; the pin is only persistence.
+          }
+          run({ profileId });
+        })();
+      },
+      // Output language chosen from the chip: persist it (so it is remembered)
+      // and re-run — the worker reads the setting fresh each run.
+      onLanguagePick: (language) => {
+        void (async () => {
+          try {
+            await sendMessage({
+              type: 'settings:patch',
+              patch: { outputLanguageOverride: language },
+            });
+          } catch {
+            // ignore — a failed patch just means the language did not change
+          }
+          panel?.setLanguage(language);
+          run({});
+        })();
+      },
+      // One-off: structure the current draft without changing the site default.
+      onStructured: () => {
+        structuredOneOff = true;
+        run({ profileId: 'structured' });
       },
     });
 
+    loadChips(panel);
     deps.layer.append(panel.element);
 
     if ('showPopover' in panel.element) {
@@ -118,7 +187,15 @@ export function createSession(
           // Fixed, to match the top-layer button layer this sits inside —
           // every coordinate in the injected UI is viewport-relative.
           strategy: 'fixed',
-          middleware: [offset(10), flip(), shift({ padding: 8 })],
+          middleware: [
+            // A real gap from the composer — 10px read as touching it.
+            offset(14),
+            // Flip to whichever side has more room, not just the opposite one,
+            // so a composer with little space above does not shove the panel
+            // half over itself.
+            flip({ fallbackAxisSideDirection: 'end' }),
+            shift({ padding: 8 }),
+          ],
         }).then(({ x, y }) => {
           if (!panel) return;
           Object.assign(panel.element.style, {
@@ -134,7 +211,14 @@ export function createSession(
     return panel;
   }
 
-  function start(adjust?: string): void {
+  interface RunOptions {
+    /** Free-text or preset adjustment for a regenerate. */
+    adjust?: string;
+    /** Force a specific profile for this run (chip pick, or the Structured chip). */
+    profileId?: string;
+  }
+
+  function run(opts: RunOptions = {}): void {
     if (closed) return;
     stopPort();
     callbacks.onStateChange('loading');
@@ -154,7 +238,12 @@ export function createSession(
 
       switch (message.type) {
         case 'accepted':
-          ensurePanel().setProfile(message.profileId, message.auto);
+          // Keep the chip on the persistent profile for a Structured one-off.
+          if (structuredOneOff) {
+            structuredOneOff = false;
+          } else {
+            ensurePanel().setProfile(message.profileId, message.auto);
+          }
           break;
 
         case 'chunk': {
@@ -217,7 +306,8 @@ export function createSession(
       type: 'start',
       draft,
       origin: deps.origin,
-      ...(adjust ? { adjust } : {}),
+      ...(opts.adjust ? { adjust: opts.adjust } : {}),
+      ...(opts.profileId ? { profileId: opts.profileId } : {}),
     });
   }
 
@@ -324,5 +414,13 @@ export function createSession(
     callbacks.onClosed();
   }
 
-  return { start, stop, close };
+  return {
+    // The public entry point is a thin wrapper over `run`, which also handles
+    // the internal profile/language/structured re-runs.
+    start: (adjust?: string) => {
+      run(adjust ? { adjust } : {});
+    },
+    stop,
+    close,
+  };
 }

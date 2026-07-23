@@ -2,14 +2,17 @@ import { ADJUST_PRESETS } from '../../enhance/assemble';
 import type { SafeError } from '../../messaging/protocol';
 import { type MessageKey, t } from '../../i18n';
 import { el } from '../host';
+import { CATEGORY_COLORS } from '../tokens';
 import { computeDiff, isUnchanged, renderDiff } from './diff';
 import {
   alertIcon,
+  checkIcon,
   chevronDown,
   chevronEnd,
   chevronStart,
   closeIcon,
   copyIcon,
+  globeIcon,
 } from './icons';
 
 /**
@@ -28,13 +31,25 @@ export interface PanelVersion {
   adjust?: string;
 }
 
+/** A profile as the chip menu needs it — just enough to list and pick. */
+export interface ProfileOption {
+  id: string;
+  name: string;
+  category: string;
+}
+
 export interface PanelCallbacks {
   onAccept: (text: string) => void;
   onRetry: (adjust?: string) => void;
   onCopy: (text: string) => void;
   onDiscard: () => void;
   onStop: () => void;
-  onProfileClick: () => void;
+  /** A profile was chosen from the header chip — re-enhance in it, and pin it. */
+  onProfilePick: (profileId: string) => void;
+  /** An output language was chosen from the header chip. '' = same as draft. */
+  onLanguagePick: (language: string) => void;
+  /** The Structured chip — re-run the current draft as an engineered prompt. */
+  onStructured: () => void;
 }
 
 export interface PanelHandle {
@@ -50,10 +65,37 @@ export interface PanelHandle {
   showError: (error: SafeError) => void;
   showNotice: (message: string) => void;
   setProfile: (name: string, auto: boolean) => void;
+  /** The list the profile chip menu offers, and which is current. */
+  setProfileOptions: (profiles: ProfileOption[], currentId: string) => void;
+  /** The current output-language override ('' = same as the draft). */
+  setLanguage: (current: string) => void;
   focusTitle: () => void;
   currentText: () => string;
   destroy: () => void;
 }
+
+/**
+ * The output-language choices the panel chip offers. A short curated list —
+ * the settings page keeps the free-text field for anything exotic. Empty value
+ * = keep the draft's own language.
+ */
+const PANEL_LANGUAGES: readonly { value: string; label: string }[] = [
+  { value: '', label: 'Same as draft' },
+  { value: 'English', label: 'English' },
+  { value: 'Persian (فارسی)', label: 'Persian (فارسی)' },
+  { value: 'Arabic', label: 'Arabic' },
+  { value: 'Spanish', label: 'Spanish' },
+  { value: 'French', label: 'French' },
+  { value: 'German', label: 'German' },
+  { value: 'Portuguese', label: 'Portuguese' },
+  { value: 'Italian', label: 'Italian' },
+  { value: 'Turkish', label: 'Turkish' },
+  { value: 'Russian', label: 'Russian' },
+  { value: 'Hindi', label: 'Hindi' },
+  { value: 'Chinese (Simplified)', label: 'Chinese (Simplified)' },
+  { value: 'Japanese', label: 'Japanese' },
+  { value: 'Korean', label: 'Korean' },
+];
 
 /** UX-SPEC §2.2: regenerate branches, never overwrites. Three is the cap. */
 const MAX_VERSIONS = 3;
@@ -66,6 +108,168 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
   let showOriginal = false;
   let destroyed = false;
 
+  // State the header chips + their menus read from.
+  let profileOptions: ProfileOption[] = [];
+  let currentProfileId = '';
+  let currentAuto = true;
+  let currentLanguage = '';
+
+  /* ── chip menus (profile + language) ───────────────────────────── */
+
+  interface MenuItem {
+    value: string;
+    label: string;
+    current: boolean;
+    /** Category dot colour, for the profile menu only. */
+    dot?: string;
+  }
+
+  let menuEl: HTMLElement | null = null;
+  let menuCleanup: (() => void) | null = null;
+
+  function closeChipMenu(): void {
+    if (!menuEl) return;
+    menuCleanup?.();
+    menuCleanup = null;
+    menuEl.remove();
+    menuEl = null;
+  }
+
+  /** Open the menu under `chipEl`, or close it if it is already this chip's. */
+  function toggleMenu(
+    chipEl: HTMLButtonElement,
+    itemsFn: () => MenuItem[],
+    onPick: (value: string) => void,
+  ): void {
+    const wasThis = chipEl.getAttribute('aria-expanded') === 'true';
+    closeAllChips();
+    if (wasThis) return;
+
+    const items = itemsFn();
+    const list = el('ul', {
+      class: 'pa-chip-menu',
+      attrs: { role: 'listbox', tabindex: '-1' },
+    });
+
+    const options: HTMLElement[] = items.map((item) => {
+      const li = el('li', {
+        attrs: {
+          role: 'option',
+          tabindex: '-1',
+          'aria-selected': String(item.current),
+          'aria-current': String(item.current),
+        },
+        children: [
+          item.dot
+            ? el('span', {
+                class: 'pa-chip-dot',
+                attrs: { style: `background:${item.dot}` },
+              })
+            : null,
+          el('span', { text: item.label }),
+        ].filter((n): n is HTMLElement => n !== null),
+      });
+      const choose = (): void => {
+        closeChipMenu();
+        chipEl.focus();
+        onPick(item.value);
+      };
+      li.addEventListener('click', choose);
+      li.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          choose();
+        }
+      });
+      return li;
+    });
+    list.append(...options);
+
+    // Roving focus with the arrows; Esc closes and returns to the chip.
+    list.addEventListener('keydown', (event) => {
+      const i = options.indexOf(deepActive() as HTMLElement);
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        const delta = event.key === 'ArrowDown' ? 1 : -1;
+        const next = options[(i + delta + options.length) % options.length];
+        next?.focus();
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        options[0]?.focus();
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        options[options.length - 1]?.focus();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeChipMenu();
+        chipEl.focus();
+      }
+    });
+
+    element.append(list);
+    positionMenu(list, chipEl);
+    chipEl.setAttribute('aria-expanded', 'true');
+    menuEl = list;
+
+    // Focus the current item so the keyboard lands somewhere sensible.
+    const start = options.find((_, idx) => items[idx]?.current === true);
+    (start ?? options[0])?.focus();
+
+    // Dismiss on any pointer outside the menu or its chip.
+    //
+    // composedPath(), not event.target: this listener is on the top document,
+    // and an event originating inside our shadow root is retargeted to the
+    // shadow host by the time it arrives here — so `target` is never the menu,
+    // and a naive contains() check would close the menu on its own clicks.
+    const onOutside = (event: Event): void => {
+      const path = event.composedPath();
+      if (path.includes(list) || path.includes(chipEl)) return;
+      closeChipMenu();
+    };
+    document.addEventListener('pointerdown', onOutside, true);
+    menuCleanup = () => {
+      document.removeEventListener('pointerdown', onOutside, true);
+      chipEl.setAttribute('aria-expanded', 'false');
+    };
+  }
+
+  /** Reset every chip's expanded state and tear down any open menu. */
+  function closeAllChips(): void {
+    closeChipMenu();
+  }
+
+  /**
+   * Position the menu under its chip, clamped inside the panel. Absolute (not a
+   * top-layer popover) so it works on every target browser; kept within the
+   * panel's box so its `overflow: hidden` never clips it.
+   */
+  function positionMenu(list: HTMLElement, chipEl: HTMLElement): void {
+    const panelRect = element.getBoundingClientRect();
+    const chipRect = chipEl.getBoundingClientRect();
+
+    const top = chipRect.bottom - panelRect.top + 4;
+    const maxLeft = element.clientWidth - list.offsetWidth - 8;
+    const left = Math.max(
+      8,
+      Math.min(chipRect.left - panelRect.left, Math.max(8, maxLeft)),
+    );
+    const maxHeight = element.clientHeight - top - 10;
+
+    list.style.top = `${String(top)}px`;
+    list.style.left = `${String(left)}px`;
+    list.style.maxHeight = `${String(Math.max(120, maxHeight))}px`;
+  }
+
+  /** The profile chip label + auto/pinned suffix, from the current state. */
+  function renderChip(): void {
+    const name = profileOptions.find((p) => p.id === currentProfileId)?.name;
+    chipLabel.textContent = name ?? prettifyId(currentProfileId);
+    chipAuto.textContent = currentAuto
+      ? t('panel.profileAuto')
+      : t('panel.profilePinned');
+  }
+
   /* ── header ────────────────────────────────────────────────────── */
 
   const titleId = 'pa-panel-title';
@@ -76,6 +280,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     attrs: { id: titleId, tabindex: '-1' },
   });
 
+  // Which style/profile ran, and a menu to switch it.
   const chipLabel = el('span', { text: 'General' });
   const chipAuto = el('span', {
     class: 'pa-chip-auto',
@@ -86,11 +291,54 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     attrs: {
       type: 'button',
       'aria-haspopup': 'listbox',
+      'aria-expanded': 'false',
       'aria-label': t('panel.changeProfile'),
     },
     children: [chipLabel, chipAuto, chevronDown()],
   });
-  chip.addEventListener('click', callbacks.onProfileClick);
+  chip.addEventListener('click', () => {
+    toggleMenu(
+      chip,
+      () =>
+        profileOptions.map((p) => {
+          const dot = CATEGORY_COLORS[p.category];
+          return {
+            value: p.id,
+            label: p.name,
+            current: p.id === currentProfileId,
+            ...(dot ? { dot } : {}),
+          };
+        }),
+      (value) => callbacks.onProfilePick(value),
+    );
+  });
+
+  // Which language the rewrite comes out in — here on the panel, so it can be
+  // changed per enhancement without opening settings.
+  const langLabel = el('span', { text: t('panel.langSame') });
+  const langChip = el('button', {
+    class: 'pa-chip',
+    attrs: {
+      type: 'button',
+      'aria-haspopup': 'listbox',
+      'aria-expanded': 'false',
+      'aria-label': t('panel.changeLanguage'),
+      title: t('panel.changeLanguage'),
+    },
+    children: [globeIcon(), langLabel, chevronDown()],
+  });
+  langChip.addEventListener('click', () => {
+    toggleMenu(
+      langChip,
+      () =>
+        PANEL_LANGUAGES.map((l) => ({
+          value: l.value,
+          label: l.label,
+          current: l.value === currentLanguage,
+        })),
+      (value) => callbacks.onLanguagePick(value),
+    );
+  });
 
   const prevBtn = el('button', {
     attrs: { type: 'button', 'aria-label': t('panel.prevVersion') },
@@ -124,7 +372,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
 
   const head = el('div', {
     class: 'pa-head',
-    children: [title, chip, carousel, closeBtn],
+    children: [title, chip, langChip, carousel, closeBtn],
   });
 
   /* ── body ──────────────────────────────────────────────────────── */
@@ -203,9 +451,22 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     callbacks.onRetry(value);
   });
 
+  // Turns the current draft into a fully structured, engineered prompt — a
+  // different *shape* of output than the light rewrite, so it sits a little
+  // apart from the Shorter/Longer tweaks and carries the amber accent.
+  const structuredPill = el('button', {
+    class: 'pa-pill pa-pill-structured',
+    attrs: { type: 'button', title: t('panel.structuredHint') },
+    text: t('panel.structured'),
+  });
+  structuredPill.addEventListener('click', () => {
+    callbacks.onStructured();
+  });
+
   const adjustRow = el('div', {
     class: 'pa-row',
     children: [
+      structuredPill,
       ...ADJUST_PRESETS.map((preset) => {
         const pill = el('button', {
           class: 'pa-pill',
@@ -252,8 +513,19 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
   retryBtn.addEventListener('click', () => {
     callbacks.onRetry();
   });
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   copyBtn.addEventListener('click', () => {
     callbacks.onCopy(currentText());
+    // Visible + announced confirmation — an icon-only button that does nothing
+    // observable reads as broken.
+    clearTimeout(copiedTimer);
+    copyBtn.replaceChildren(checkIcon());
+    copyBtn.setAttribute('aria-label', t('panel.copied'));
+    status.textContent = t('panel.copied');
+    copiedTimer = setTimeout(() => {
+      copyBtn.replaceChildren(copyIcon());
+      copyBtn.setAttribute('aria-label', t('panel.copy'));
+    }, 1200);
   });
   discardBtn.addEventListener('click', callbacks.onDiscard);
 
@@ -292,6 +564,11 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
+      // A chip menu takes priority — close it, don't discard the whole panel.
+      if (menuEl) {
+        closeChipMenu();
+        return;
+      }
       callbacks.onDiscard();
       return;
     }
@@ -557,9 +834,21 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
 
     showNotice: showNoticeInternal,
 
-    setProfile: (name, auto) => {
-      chipLabel.textContent = name;
-      chipAuto.textContent = auto ? ' · auto' : ' · pinned';
+    setProfile: (profileId, auto) => {
+      currentProfileId = profileId;
+      currentAuto = auto;
+      renderChip();
+    },
+
+    setProfileOptions: (profiles, currentId) => {
+      profileOptions = profiles;
+      if (currentId) currentProfileId = currentId;
+      renderChip();
+    },
+
+    setLanguage: (current) => {
+      currentLanguage = current;
+      langLabel.textContent = current || t('panel.langSame');
     },
 
     focusTitle: () => {
@@ -573,6 +862,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     destroy: () => {
       if (destroyed) return;
       destroyed = true;
+      closeChipMenu();
       if ('hidePopover' in element) {
         try {
           (element as HTMLElement & { hidePopover: () => void }).hidePopover();
@@ -620,6 +910,11 @@ function deepActive(): Element | null {
 
 function normalise(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+/** Fallback display name before the profile list has loaded: "general" → "General". */
+function prettifyId(id: string): string {
+  return id ? id.charAt(0).toUpperCase() + id.slice(1) : '';
 }
 
 /**

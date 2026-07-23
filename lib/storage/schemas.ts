@@ -54,8 +54,11 @@ export const outputLanguageRuleSchema = z.enum([
 ]);
 export type OutputLanguageRule = z.infer<typeof outputLanguageRuleSchema>;
 
-/** The corner ladder from UX-SPEC §1.2, plus the outside-the-field fallback. */
+/** The corner ladder from UX-SPEC §1.2, plus the outside-the-field fallbacks. */
 export const buttonCornerSchema = z.enum([
+  // Preferred: hangs in the margin just past the field's inline-end border,
+  // vertically centred — so it can never sit on top of the user's text.
+  'outside-end',
   'bottom-end',
   'bottom-start',
   'top-end',

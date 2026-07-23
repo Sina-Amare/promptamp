@@ -15,6 +15,9 @@
   --text-muted: #5c5c66;
   --accent: #4f46e5;
   --accent-fg: #ffffff;
+  --action: #f59e0b;
+  --action-fg: #1a1a21;
+  --action-hover: #d97706;
   --danger: #b3261e;
   --ok: #15803d;
   --radius: 10px;
@@ -30,6 +33,9 @@
     --text-muted: #a2a2ae;
     --accent: #818cf8;
     --accent-fg: #15152b;
+    --action: #fbbf24;
+    --action-fg: #1a1a21;
+    --action-hover: #f59e0b;
     --danger: #f2827a;
     --ok: #4ade80;
   }
@@ -203,13 +209,29 @@ button.danger {
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
 }
 
+button.primary:active,
+button.secondary:active,
+button.danger:active {
+  transform: scale(0.98);
+}
+
+/* The single amber commit, matching the injected panel's Replace button. */
 button.primary {
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
+  border: 1px solid var(--action);
+  background: var(--action);
+  color: var(--action-fg);
   font-weight: 600;
+}
+
+button.primary:hover {
+  background: var(--action-hover);
+  border-color: var(--action-hover);
 }
 
 button.secondary {
@@ -218,10 +240,18 @@ button.secondary {
   color: var(--text);
 }
 
+button.secondary:hover {
+  border-color: var(--accent);
+}
+
 button.quiet {
   border: 0;
   background: none;
   color: var(--text-muted);
+}
+
+button.quiet:hover {
+  color: var(--text);
 }
 
 button.danger {
@@ -230,9 +260,63 @@ button.danger {
   color: var(--danger);
 }
 
+button.danger:hover {
+  border-color: var(--danger);
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* One-line plain-language intro at the top of each tab. */
+.section-intro {
+  margin: -6px 0 4px;
+  max-width: 60ch;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Progressive disclosure inside a connection card — Name / Server URL / model
+   fetch live here so the common case shows four controls, not eight. */
+details.advanced {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+details.advanced > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+
+details.advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.advanced > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-inline-end: 6px;
+  transition: transform 120ms ease;
+}
+
+details.advanced[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+details.advanced > summary:hover {
+  color: var(--text);
+}
+
+.advanced-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .hint {

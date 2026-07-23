@@ -128,6 +128,7 @@ async function render(): Promise<void> {
   });
 
   const openOptions = el('button', {
+    class: 'settings-link',
     text: t('popup.settings'),
     attrs: { type: 'button' },
   });
@@ -151,8 +152,18 @@ async function render(): Promise<void> {
     });
   }
 
+  const brand = el('div', {
+    class: 'brand',
+    children: [
+      el('img', {
+        attrs: { src: '/icon/icon-32.png', alt: '', width: '20', height: '20' },
+      }),
+      el('h1', { text: 'PromptAmp' }),
+    ],
+  });
+
   const children: (Node | null)[] = [
-    el('h1', { text: 'PromptAmp' }),
+    brand,
     el('p', { class: 'site', text: origin ?? t('popup.notAvailable') }),
     setupPrompt,
     el('label', {

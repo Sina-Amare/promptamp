@@ -54,6 +54,21 @@ export function copyIcon(): SVGElement {
   );
 }
 
+/** Output-language chip. A plain globe — meridian + equator. */
+export function globeIcon(): SVGElement {
+  return icon(
+    12,
+    svg('circle', { cx: '12', cy: '12', r: '9', ...stroke }),
+    svg('path', { d: 'M3 12 h18', ...stroke }),
+    svg('ellipse', { cx: '12', cy: '12', rx: '4', ry: '9', ...stroke }),
+  );
+}
+
+/** Transient confirmation on the Copy button. */
+export function checkIcon(): SVGElement {
+  return icon(14, svg('path', { d: 'M5 12.5 L10 17.5 L19 7', ...stroke }));
+}
+
 export function alertIcon(): SVGElement {
   return icon(
     15,

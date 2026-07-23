@@ -143,6 +143,7 @@ async function providersTab(): Promise<HTMLElement> {
   const connections = await sendMessage({ type: 'connections:list' });
 
   const stack = el('div', { class: 'stack' });
+  stack.append(el('p', { class: 'section-intro', text: t('intro.providers') }));
 
   // Firefox grants host permissions only on request. Without this, a valid key
   // fails every call and looks exactly like a bad key.
@@ -410,7 +411,35 @@ function connectionCard(
 
   const actions = el('div', {
     class: 'row',
-    children: [save, test, fetchModels, remove],
+    children: [save, test, remove],
+  });
+
+  // Everything the common case (one key, a known provider with a sensible
+  // default model) does not need is tucked behind a native disclosure — Name,
+  // the custom Server URL, and the model fetcher. Collapsed by default, so a
+  // fresh card shows four controls, not eight.
+  const advanced = el('details', {
+    class: 'advanced',
+    children: [
+      el('summary', { text: t('conn.advanced') }),
+      el('div', {
+        class: 'advanced-body',
+        children: [
+          el('label', {
+            children: [el('span', { text: t('common.name') }), labelInput],
+          }),
+          config.allowsCustomBaseUrl
+            ? el('label', {
+                children: [
+                  el('span', { text: t('conn.serverUrl') }),
+                  baseUrlInput,
+                ],
+              })
+            : null,
+          fetchModels,
+        ],
+      }),
+    ],
   });
 
   return el('section', {
@@ -440,9 +469,6 @@ function connectionCard(
             text: PROVIDER_NOTES[connection.providerId]!,
           })
         : null,
-      el('label', {
-        children: [el('span', { text: t('common.name') }), labelInput],
-      }),
       config.requiresKey || config.keyOptional
         ? el('label', {
             children: [
@@ -459,34 +485,22 @@ function connectionCard(
             ],
           })
         : null,
-      el('div', {
-        class: 'row',
+      el('label', {
         children: [
-          el('label', {
-            children: [
-              el('span', { text: t('common.model') }),
-              modelInput,
-              modelList,
-            ],
-          }),
-          config.allowsCustomBaseUrl
-            ? el('label', {
-                children: [
-                  el('span', { text: t('conn.serverUrl') }),
-                  baseUrlInput,
-                ],
-              })
-            : null,
+          el('span', { text: t('common.model') }),
+          modelInput,
+          modelList,
         ],
       }),
       actions,
       status,
+      advanced,
       config.setupUrl
         ? el('p', {
             class: 'hint',
             children: [
               el('a', {
-                text: `Get a ${config.label} key →`,
+                text: t('conn.getKey', { provider: config.label }),
                 attrs: {
                   href: config.setupUrl,
                   target: '_blank',
@@ -684,6 +698,7 @@ async function profilesTab(): Promise<HTMLElement> {
   return el('div', {
     class: 'stack',
     children: [
+      el('p', { class: 'section-intro', text: t('intro.profiles') }),
       el('section', {
         class: 'card',
         children: [
@@ -940,6 +955,7 @@ async function behaviorTab(): Promise<HTMLElement> {
   return el('div', {
     class: 'stack',
     children: [
+      el('p', { class: 'section-intro', text: t('intro.behavior') }),
       el('section', {
         class: 'card',
         children: [
@@ -1113,6 +1129,7 @@ async function historyTab(): Promise<HTMLElement> {
   return el('div', {
     class: 'stack',
     children: [
+      el('p', { class: 'section-intro', text: t('intro.history') }),
       el('section', {
         class: 'card',
         children: [

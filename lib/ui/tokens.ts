@@ -20,6 +20,12 @@ export const TOKENS_CSS = `
   --ph-text-muted: #5C5C66;    /*  5.9:1 */
   --ph-accent: #4F46E5;
   --ph-accent-fg: #FFFFFF;
+  /* The "amplify" accent, from the logo. Amber is light, so its foreground is
+     dark ink — #1A1A21 on #F59E0B ≈ 9:1. Reserved for the single commit action
+     (Replace draft) and the done confirmation; indigo stays the brand colour. */
+  --ph-action: #F59E0B;
+  --ph-action-fg: #1A1A21;
+  --ph-action-hover: #D97706;
   --ph-danger: #B3261E;
   --ph-diff-add-bg: #DCFCE7;
   --ph-diff-add-fg: #14532D;
@@ -74,6 +80,10 @@ export const TOKENS_CSS = `
   --ph-text-muted: #A2A2AE;    /*  6.4:1 */
   --ph-accent: #818CF8;
   --ph-accent-fg: #15152B;
+  /* Amber-400 reads brighter on the dark surface; dark ink foreground holds. */
+  --ph-action: #FBBF24;
+  --ph-action-fg: #1A1A21;
+  --ph-action-hover: #F59E0B;
   --ph-danger: #F2827A;
   --ph-diff-add-bg: #14321F;
   --ph-diff-add-fg: #86EFAC;
@@ -133,6 +143,8 @@ export const TOKENS_CSS = `
     --ph-border: CanvasText;
     --ph-accent: Highlight;
     --ph-accent-fg: HighlightText;
+    --ph-action: Highlight;
+    --ph-action-fg: HighlightText;
   }
 }
 `;

@@ -124,15 +124,16 @@ export const BUTTON_CSS = `
 }
 
 /* Empty or too-short draft: present but plainly not ready. Discoverable
-   without nagging — hiding it entirely makes the feature undiscoverable. */
+   without nagging — hiding it entirely makes the feature undiscoverable.
+   0.55, not 0.4: the fainter value read as a rendering glitch on busy pages. */
 .pa-button-wrap[data-state='ghost'] .pa-button {
-  opacity: 0.4;
+  opacity: 0.55;
   cursor: default;
 }
 
 /* Actively typing: recede, never compete with composition. */
 .pa-button-wrap[data-state='typing'] .pa-button {
-  opacity: 0.35;
+  opacity: 0.5;
 }
 
 .pa-button-wrap[data-state='loading'] .pa-button {
@@ -147,8 +148,13 @@ export const BUTTON_CSS = `
   opacity: 1;
 }
 
+/* The one amber moment on the disc: a warm "amplified" flash on success,
+   echoing the logo's indicator. Dark ink on amber holds contrast. */
 .pa-button-wrap[data-state='done'] .pa-button {
   opacity: 1;
+  background: var(--ph-action);
+  border-color: var(--ph-action);
+  color: var(--ph-action-fg);
 }
 
 @keyframes pa-spin {

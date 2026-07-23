@@ -57,7 +57,14 @@ export const en = {
   'panel.adjustShorter': 'Shorter',
   'panel.adjustLonger': 'Longer',
   'panel.adjustSpecific': 'More specific',
+  'panel.structured': 'Structured',
+  'panel.structuredHint':
+    'Rewrite as a full structured prompt — role, task, requirements, output format',
   'panel.profileAuto': ' · auto',
+  'panel.profilePinned': ' · pinned',
+  'panel.copied': 'Copied',
+  'panel.changeLanguage': 'Output language',
+  'panel.langSame': 'Same as draft',
 
   /* ── undo (§2.5) ──────────────────────────────────────────────── */
   'undo.replaced': 'Draft replaced',
@@ -105,6 +112,15 @@ export const en = {
   'tab.behavior': 'Behavior',
   'tab.history': 'History',
   'tab.about': 'About',
+
+  /* One-line plain-language intro at the top of each settings tab. */
+  'intro.providers':
+    'Connect one or more AI providers with your own API keys. PromptAmp uses the first that works and falls back to the rest.',
+  'intro.profiles':
+    'Profiles decide how a draft is rewritten. The built-ins are chosen automatically per site; fork one to make it your own.',
+  'intro.behavior':
+    'How PromptAmp behaves: which profile and language it uses, its daily limit, and where it stays hidden.',
+  'intro.history': 'Every enhancement you have run, kept on this device only.',
   'common.save': 'Save',
   'common.saved': 'Saved',
   'common.saving': 'Saving…',
@@ -148,6 +164,7 @@ export const en = {
   'conn.keyStorage':
     'Stored on this device only, readable only by the background worker.',
   'conn.serverUrl': 'Server URL',
+  'conn.advanced': 'Advanced',
   'conn.loadModels': 'Load models',
   'conn.modelsFound': '{n} models available',
   'conn.modelsNone': 'No models returned',

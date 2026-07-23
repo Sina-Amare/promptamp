@@ -1,15 +1,16 @@
 import { svg } from '../host';
 
 /**
- * The "hone" mark — a whetstone stroke with a chevron tip: something being
- * sharpened, not something being conjured.
+ * The prompt mark — lines of prompt text with a live caret and an AI spark. A
+ * monochrome version of the store/logo mark (`assets/icon.svg`), so the
+ * floating button, the toolbar icon and the brand read as one system.
  *
- * Explicitly **not a sparkle**. Sparkle affordances have organised
- * disable-me demand behind them (Figma's forum, Notion's), and a sparkle says
- * "AI happened here" where this says "your draft got sharper", which is the
- * actual promise. It is also a logo-class mark, so it is never mirrored in RTL.
+ * Single-colour on `currentColor` because it sits on the solid disc and has to
+ * recolour with the button's state (white on indigo idle, danger on error,
+ * dark on the amber done flash) — the logo keeps the amber accent, the button
+ * inherits it. A logo-class mark, so it is never mirrored in RTL.
  */
-export function honeIcon(): SVGElement {
+export function promptMark(): SVGElement {
   return svg(
     'svg',
     {
@@ -21,20 +22,24 @@ export function honeIcon(): SVGElement {
       height: '15',
     },
     [
-      // The stone: a long tapered stroke.
+      // Three lines of prompt text.
       svg('path', {
-        d: 'M4.5 17.5 L14 8',
+        d: 'M5 9 H12 M5 12 H16 M5 15 H11',
         stroke: 'currentColor',
-        'stroke-width': '2.1',
+        'stroke-width': '1.8',
         'stroke-linecap': 'round',
       }),
-      // The honed edge, catching the light.
+      // The live text caret.
       svg('path', {
-        d: 'M13 4.5 L19.5 11 L15.5 15 L9 8.5 Z',
+        d: 'M14.6 7.4 V11',
         stroke: 'currentColor',
-        'stroke-width': '2.1',
-        'stroke-linejoin': 'round',
+        'stroke-width': '1.7',
         'stroke-linecap': 'round',
+      }),
+      // The AI spark.
+      svg('path', {
+        d: 'M18.5 5.3 C18.714 6.286 19.214 6.786 20.2 7 C19.214 7.214 18.714 7.714 18.5 8.7 C18.286 7.714 17.786 7.214 16.8 7 C17.786 6.786 18.286 6.286 18.5 5.3 Z',
+        fill: 'currentColor',
       }),
     ],
   );

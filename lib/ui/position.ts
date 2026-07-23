@@ -13,16 +13,24 @@ import type { ButtonCorner } from '../storage/schemas';
 /** Inset from the field's border box, per UX-SPEC §1.2. */
 export const EDGE_INSET = 8;
 
+/** Gap between the field's outer border and an outside-placed button. */
+export const OUTSIDE_GAP = 8;
+
 /** The zone that must be clear. Matches the button's 40px hit area plus margin. */
 export const HIT_ZONE = 48;
 
 /**
- * The flip ladder. Ordered by how well each position preserves the
- * convention users already scan for (bottom end-corner, as Grammarly and
- * LanguageTool established), degrading to outside-the-field rather than
- * overlapping something.
+ * The flip ladder.
+ *
+ * `outside-end` leads: hanging in the margin past the field's end edge is the
+ * one placement that can never cover the user's own text, which was the
+ * top complaint about sitting inside the corner. It falls back to the inside
+ * corners (the convention Grammarly/LanguageTool established) only when there
+ * is no room outside — a field flush against the window edge — and to
+ * `outside-below` as the last resort.
  */
 export const CORNER_LADDER: ButtonCorner[] = [
+  'outside-end',
   'bottom-end',
   'bottom-start',
   'top-end',
@@ -69,6 +77,15 @@ export function cornerPosition(
   const at = (t: number, l: number): Point => ({ top: t, left: l });
 
   switch (corner) {
+    case 'outside-end': {
+      // In the margin just past the field's end border, vertically centred —
+      // never over the field's own content. "end" follows the field's
+      // direction, so an RTL composer places it to the left.
+      const centred = field.top + field.height / 2 - size / 2;
+      const outerRight = field.left + field.width + OUTSIDE_GAP;
+      const outerLeft = field.left - OUTSIDE_GAP - size;
+      return at(centred, endIsRight ? outerRight : outerLeft);
+    }
     case 'bottom-end':
       return at(bottom, endIsRight ? right : left);
     case 'bottom-start':
@@ -84,6 +101,23 @@ export function cornerPosition(
         endIsRight ? right : left,
       );
   }
+}
+
+/**
+ * Does the button's box fit inside the viewport at this point?
+ *
+ * The outside placements can land off-screen when a field is flush against a
+ * window edge (full-width composers are common). A corner that would render
+ * the button partly or wholly out of view is unusable, so `placeButton` skips
+ * it and drops to the next rung.
+ */
+export function fitsInViewport(point: Point, size: number): boolean {
+  return (
+    point.left >= 0 &&
+    point.top >= 0 &&
+    point.left + size <= globalThis.innerWidth &&
+    point.top + size <= globalThis.innerHeight
+  );
 }
 
 /**
@@ -170,6 +204,9 @@ export function placeButton(
 
   for (const corner of ladder) {
     const point = cornerPosition(rect, corner, direction, size);
+    // Skip a placement that would put the button off-screen (a field flush to
+    // the window edge has no room for an outside corner).
+    if (!fitsInViewport(point, size)) continue;
     // getBoundingClientRect and elementsFromPoint are both viewport-relative,
     // so no scroll conversion is needed on either side.
     if (!isCornerOccupied(point, HIT_ZONE, ignore)) {
@@ -177,9 +214,9 @@ export function placeButton(
     }
   }
 
-  // Everything is occupied — outside-below at least does not sit on a control
-  // the user is more likely to want than us.
-  const corner: ButtonCorner = 'outside-below';
+  // Every fitting corner is occupied. Fall back to the inside bottom-end
+  // corner — clamped on-screen — rather than an off-screen outside slot.
+  const corner: ButtonCorner = 'bottom-end';
   return {
     corner,
     point: cornerPosition(rect, corner, direction, size),
