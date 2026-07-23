@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="PromptAmp">
   <!--
-    caret+spark: three lines of prompt text (indigo), a live text caret and an
-    AI spark (amber). Says "a prompt being written and enhanced" — the product,
-    in one mark. Two colours only; reads down to 16px. Regenerate the PNG set
-    with `pnpm icons` after editing this file; the in-page button carries a
-    monochrome version of the same shapes.
+    Sparkle: the widely understood "enhance with AI" mark. A teal disc (the
+    brand colour, matching the in-page floating button) carrying a white sparkle
+    with a small amber companion (the "amplify" accent). Reads down to 16px.
+    Regenerate the PNG set with `pnpm icons` after editing this file; the in-page
+    button carries a monochrome version of the same sparkle.
   -->
-  <path d="M26 40 H56 M26 54 H70 M26 68 H50" stroke="#4F46E5" stroke-width="6.5" stroke-linecap="round"/>
-  <path d="M63 33 V47" stroke="#F59E0B" stroke-width="6" stroke-linecap="round"/>
-  <path d="M78 23 C78.882 27.06 80.94 29.118 85 30 C80.94 30.882 78.882 32.94 78 37 C77.118 32.94 75.06 30.882 71 30 C75.06 29.118 77.118 27.06 78 23 Z" fill="#F59E0B"/>
+  <rect x="4" y="4" width="92" height="92" rx="24" fill="#0284C7"/>
+  <path d="M44 24 Q44 52 72 52 Q44 52 44 80 Q44 52 16 52 Q44 52 44 24 Z" fill="#FFFFFF"/>
+  <path d="M72 18 Q72 28 82 28 Q72 28 72 38 Q72 28 62 28 Q72 28 72 18 Z" fill="#FBBF24"/>
 </svg>

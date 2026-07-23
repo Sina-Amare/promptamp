@@ -1,14 +1,14 @@
 import { svg } from '../host';
 
 /**
- * The prompt mark — lines of prompt text with a live caret and an AI spark. A
- * monochrome version of the store/logo mark (`assets/icon.svg`), so the
- * floating button, the toolbar icon and the brand read as one system.
+ * The enhance mark — a large AI sparkle with a smaller companion, the widely
+ * understood "improve this with AI" glyph. A monochrome version of the
+ * store/logo mark (`assets/icon.svg`), so the floating button, the toolbar icon
+ * and the brand read as one system.
  *
  * Single-colour on `currentColor` because it sits on the solid disc and has to
- * recolour with the button's state (white on indigo idle, danger on error,
- * dark on the amber done flash) — the logo keeps the amber accent, the button
- * inherits it. A logo-class mark, so it is never mirrored in RTL.
+ * recolour with the button's state (white on teal idle, danger on error, dark
+ * on the amber done flash). A logo-class mark, so it is never mirrored in RTL.
  */
 export function promptMark(): SVGElement {
   return svg(
@@ -22,23 +22,14 @@ export function promptMark(): SVGElement {
       height: '15',
     },
     [
-      // Three lines of prompt text.
+      // The primary four-point sparkle (arms pinch to the centre).
       svg('path', {
-        d: 'M5 9 H12 M5 12 H16 M5 15 H11',
-        stroke: 'currentColor',
-        'stroke-width': '1.8',
-        'stroke-linecap': 'round',
+        d: 'M10.5 5 Q10.5 12.5 18 12.5 Q10.5 12.5 10.5 20 Q10.5 12.5 3 12.5 Q10.5 12.5 10.5 5 Z',
+        fill: 'currentColor',
       }),
-      // The live text caret.
+      // The smaller companion sparkle, upper-right.
       svg('path', {
-        d: 'M14.6 7.4 V11',
-        stroke: 'currentColor',
-        'stroke-width': '1.7',
-        'stroke-linecap': 'round',
-      }),
-      // The AI spark.
-      svg('path', {
-        d: 'M18.5 5.3 C18.714 6.286 19.214 6.786 20.2 7 C19.214 7.214 18.714 7.714 18.5 8.7 C18.286 7.714 17.786 7.214 16.8 7 C17.786 6.786 18.286 6.286 18.5 5.3 Z',
+        d: 'M18.8 2.6 Q18.8 5.5 21.7 5.5 Q18.8 5.5 18.8 8.4 Q18.8 5.5 15.9 5.5 Q18.8 5.5 18.8 2.6 Z',
         fill: 'currentColor',
       }),
     ],

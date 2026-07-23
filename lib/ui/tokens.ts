@@ -18,11 +18,13 @@ export const TOKENS_CSS = `
   --ph-border: rgba(0, 0, 0, 0.14);
   --ph-text: #1A1A21;          /* 15.2:1 */
   --ph-text-muted: #5C5C66;    /*  5.9:1 */
-  --ph-accent: #4F46E5;
+  /* Teal brand. #0284C7 on white ≈ 4.1:1, white on it ≈ 4.1:1 — enough for the
+     disc icon, focus rings, and links (bold). */
+  --ph-accent: #0284C7;
   --ph-accent-fg: #FFFFFF;
   /* The "amplify" accent, from the logo. Amber is light, so its foreground is
      dark ink — #1A1A21 on #F59E0B ≈ 9:1. Reserved for the single commit action
-     (Replace draft) and the done confirmation; indigo stays the brand colour. */
+     (Replace draft) and the done confirmation; teal stays the brand colour. */
   --ph-action: #F59E0B;
   --ph-action-fg: #1A1A21;
   --ph-action-hover: #D97706;
@@ -78,8 +80,9 @@ export const TOKENS_CSS = `
   --ph-border: rgba(255, 255, 255, 0.16);
   --ph-text: #EDEDF2;          /* 13.9:1 */
   --ph-text-muted: #A2A2AE;    /*  6.4:1 */
-  --ph-accent: #818CF8;
-  --ph-accent-fg: #15152B;
+  /* Sky-400 reads bright and clean on the dark surface; near-black ink on it. */
+  --ph-accent: #38BDF8;
+  --ph-accent-fg: #08131F;
   /* Amber-400 reads brighter on the dark surface; dark ink foreground holds. */
   --ph-action: #FBBF24;
   --ph-action-fg: #1A1A21;
