@@ -115,6 +115,27 @@ describe('fallback chain', () => {
     });
   });
 
+  it('fails with a timeout when a stream goes silent, never hangs', async () => {
+    // A provider that accepts the request and then produces no tokens (seen with
+    // some streams) must not freeze the panel forever. The idle timeout fires
+    // before the mock's first token and surfaces an actionable error.
+    await chain('mock-1');
+    const safe = await runEnhancement(
+      { draft: DRAFT, origin: 'https://example.com' },
+      {
+        signal: new AbortController().signal,
+        onChunk: () => undefined,
+        idleTimeoutMs: 30,
+      },
+    ).then(
+      () => null,
+      (err: unknown) => safeErrorForEnhancement(err),
+    );
+
+    expect(safe?.kind).toBe('network');
+    expect(safe?.message).toMatch(/didn.t respond in time/);
+  });
+
   it('summarises every attempt when the whole chain fails', async () => {
     await chain('mock-bad-key', 'mock-quota', 'mock-network');
 

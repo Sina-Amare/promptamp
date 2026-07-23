@@ -73,18 +73,37 @@ export const mockAdapter = async (req: ChatRequest): Promise<ChatResponse> => {
 
   const draft = extractDraft(user).replace(DIRECTIVE, '').trim();
 
-  if (command === 'decline') {
-    // Drives the "Nothing to enhance yet" note — a draft with no request.
-    return withUsage(draft, DECLINE_SENTINEL);
+  const text =
+    command === 'decline'
+      ? // Drives the "Nothing to enhance yet" note — a draft with no request.
+        DECLINE_SENTINEL
+      : command === 'identical'
+        ? // Drives the "Already looks good" notice (UX-SPEC §2.2).
+          draft
+        : enhance(draft);
+
+  // Stream it when the caller asked to, exactly as a real provider would — this
+  // is the only place the smooth-reveal and decline-hold paths get exercised.
+  if (req.onChunk) {
+    for (const piece of chunkText(text)) {
+      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+      req.onChunk(piece);
+      await delay(15, signal);
+    }
   }
 
-  if (command === 'identical') {
-    // Drives the "Already looks good" notice (UX-SPEC §2.2).
-    return withUsage(draft, draft);
-  }
-
-  return withUsage(draft, enhance(draft));
+  return withUsage(draft, text);
 };
+
+/** A few uneven pieces, like a network delivers — never split a surrogate pair. */
+function chunkText(text: string): string[] {
+  const points = [...text];
+  const pieces: string[] = [];
+  for (let i = 0; i < points.length; i += 7) {
+    pieces.push(points.slice(i, i + 7).join(''));
+  }
+  return pieces.length > 0 ? pieces : [''];
+}
 
 /**
  * A recognisable, deterministic transform — obviously "enhanced" to a human
