@@ -39,6 +39,7 @@ describe('manifest', () => {
       'api.groq.com',
       'openrouter.ai',
       'generativelanguage.googleapis.com',
+      'integrate.api.nvidia.com',
       'localhost',
       '127.0.0.1',
     ];

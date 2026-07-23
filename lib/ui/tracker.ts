@@ -246,7 +246,7 @@ export function createFieldTracker(
   }
 
   function onKeyDown(event: KeyboardEvent): void {
-    if (!field || event.target !== field) return;
+    if (!field?.contains(event.target as Node)) return;
     // Forward Tab only. Shift+Tab must keep doing what the page expects, and
     // the panel handles its own focus wrap once it is open.
     if (event.key !== 'Tab' || event.shiftKey || event.defaultPrevented) return;
@@ -254,7 +254,10 @@ export function createFieldTracker(
   }
 
   function onInput(event: Event): void {
-    if (!field || event.target !== field) return;
+    // Contains, not equals: rich editors (ProseMirror, Lexical) fire input on
+    // inner nodes, and a paste that targeted one never matched — so pasted
+    // text didn't enable the button until the user typed a character.
+    if (!field?.contains(event.target as Node)) return;
     emitDraft();
 
     callbacks.onTypingChange(true);

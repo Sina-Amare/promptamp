@@ -151,27 +151,24 @@ test('discard leaves the draft untouched', async ({ page }) => {
   expect(await page.evaluate(() => window.playground.plain!())).toBe(DRAFT);
 });
 
-test('the undo pill restores the original draft byte-for-byte', async ({
+test('accepting shows no pill — the done flash is the acknowledgement', async ({
   page,
 }) => {
+  // The confirmation pill was removed by user verdict (it read as noise);
+  // native Ctrl+Z carries undo, which insertion.spec proves stays intact.
   await page.goto('http://localhost:5174/');
-  const field = page.getByTestId('rtl-textarea');
-  // Persian with a directional mark, which a normalising restore would eat.
-  const persian = '‏یک ایمیل به مدیرم بنویس و مرخصی جمعه را بخواه';
-  await field.fill(persian);
+  const field = page.getByTestId('plain-textarea');
+  await field.fill(DRAFT);
   await field.click();
 
   await button(page).click();
   await waitForResult(page);
   await page.locator(`.pa-primary`).click();
 
-  const undo = page.locator(`.pa-undo button`);
-  await expect(undo).toBeVisible();
-  await undo.click();
-
   await expect
-    .poll(() => page.evaluate(() => window.playground.rtl!()))
-    .toBe(persian);
+    .poll(() => page.evaluate(() => window.playground.plain!()))
+    .toContain('Tips for a job interview');
+  await expect(page.locator('.pa-undo')).toHaveCount(0);
 });
 
 test('Show changes renders a word-level diff, never mid-word', async ({

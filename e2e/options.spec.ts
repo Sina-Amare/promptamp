@@ -296,7 +296,7 @@ test('persists an enhanced-prompt language across reloads', async ({
   // than a mode toggle.
   await expect(language).toHaveValue('');
   await expect(language.locator('option').first()).toHaveText(
-    /Same language as my draft/,
+    /Same language as my text/,
   );
 
   await language.selectOption({ label: 'English' });

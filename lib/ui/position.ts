@@ -190,6 +190,33 @@ export interface PlacementResult {
  * first — if they dragged the button somewhere, that preference outranks our
  * convention, and it is only overridden when it would cover a control.
  */
+/**
+ * The visual composer shell around a bare editable.
+ *
+ * On real chat UIs (ChatGPT, Claude, Grok) the true editable is only the text
+ * block; the rounded box the user sees — with its control row ("+", model
+ * picker, mic, send) and its empty space — is an ancestor wrapper. Docking
+ * into the *editable's* bottom row lands on the last line of text; the empty
+ * space lives in the shell. Walk a few ancestors up and take the first that
+ * extends meaningfully below the editable (that extension IS the control row)
+ * while still wrapping it horizontally like a composer box would.
+ */
+function shellRect(field: Element, fieldBox: DOMRect): DOMRect {
+  let candidate: Element | null = field.parentElement;
+  for (let hops = 0; candidate && hops < 4; hops++) {
+    const box = candidate.getBoundingClientRect();
+    const extendsBelow = box.bottom - fieldBox.bottom >= 36;
+    const wrapsHorizontally =
+      box.left <= fieldBox.left + 16 && box.right >= fieldBox.right - 16;
+    // Sanity: a composer shell is box-like, not the page or a scroll region.
+    const sane =
+      box.height <= fieldBox.height + 160 && box.width <= fieldBox.width + 200;
+    if (extendsBelow && wrapsHorizontally && sane) return box;
+    candidate = candidate.parentElement;
+  }
+  return fieldBox;
+}
+
 export function placeButton(
   field: Element,
   direction: 'ltr' | 'rtl',
@@ -197,7 +224,7 @@ export function placeButton(
   preferred: ButtonCorner | null,
   ignore: (el: Element) => boolean,
 ): PlacementResult {
-  const box = field.getBoundingClientRect();
+  const box = shellRect(field, field.getBoundingClientRect());
   const rect: Rect = {
     top: box.top,
     left: box.left,

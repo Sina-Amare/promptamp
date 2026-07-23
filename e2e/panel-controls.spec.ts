@@ -50,7 +50,7 @@ test('the output-language chip changes the language on the panel', async ({
   await openPanel(page);
 
   const chip = panel(page).getByRole('button', { name: 'Output language' });
-  await expect(chip).toContainText('Same as draft');
+  await expect(chip).toContainText('Same as my text');
   await chip.click();
 
   const menu = panel(page).locator('.pa-chip-menu');

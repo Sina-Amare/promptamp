@@ -85,7 +85,7 @@ test('the whole flow is operable by keyboard alone', async ({ page }) => {
     const active = host?.shadowRoot?.activeElement;
     return active?.getAttribute('aria-label') ?? '';
   });
-  expect(focusedLabel).toContain('Enhance draft');
+  expect(focusedLabel).toContain('Enhance prompt');
 
   // Enter activates it, and focus lands on the panel title — not on Replace.
   await page.keyboard.press('Enter');

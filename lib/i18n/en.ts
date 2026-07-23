@@ -16,13 +16,13 @@
 
 export const en = {
   /* ── the injected button (UX-SPEC §1) ─────────────────────────── */
-  'button.tooShort': 'Write a draft first',
+  'button.tooShort': 'Write a prompt first',
   'button.dismiss': 'Hide PromptAmp',
-  'button.idle': 'Enhance draft — PromptAmp',
+  'button.idle': 'Enhance prompt — PromptAmp',
   'button.loading': 'Stop enhancing',
-  'button.done': 'Draft enhanced',
+  'button.done': 'Prompt enhanced',
   'button.error': 'Enhancement failed — try again',
-  'button.tip': 'Enhance draft{profile} · Alt+E',
+  'button.tip': 'Enhance prompt{profile} · Alt+E',
   /**
    * U+2068/U+2069 isolate the profile name. A Latin brand token sitting in a
    * line of other text can otherwise drag the surrounding words out of order;
@@ -37,19 +37,19 @@ export const en = {
   'menu.settings': 'PromptAmp settings…',
 
   /* ── the preview panel (§2) ───────────────────────────────────── */
-  'panel.title': 'Enhanced draft',
-  'panel.bodyAria': 'Enhanced draft, editable',
+  'panel.title': 'Enhanced prompt',
+  'panel.bodyAria': 'Enhanced prompt, editable',
   'panel.close': 'Close',
   'panel.changeProfile': 'Change profile',
   'panel.prevVersion': 'Previous version',
   'panel.nextVersion': 'Next version',
-  'panel.busy': 'Enhancing draft',
+  'panel.busy': 'Enhancing prompt',
   'panel.ready': 'Enhanced version ready',
   'panel.unchanged': 'This already reads well',
   'panel.declineTitle': 'Nothing to enhance yet',
   'panel.declineBody':
-    'This doesn’t look like a prompt yet. Type what you want to ask or make, then enhance it — your draft is untouched.',
-  'panel.accept': 'Replace draft',
+    'This doesn’t look like a prompt yet. Type what you want to ask or make, then enhance it — your prompt is untouched.',
+  'panel.accept': 'Replace prompt',
   'panel.copy': 'Copy',
   'panel.retry': 'Retry',
   'panel.discard': 'Discard',
@@ -67,12 +67,7 @@ export const en = {
   'panel.profilePinned': ' · pinned',
   'panel.copied': 'Copied',
   'panel.changeLanguage': 'Output language',
-  'panel.langSame': 'Same as draft',
-
-  /* ── undo (§2.5) ──────────────────────────────────────────────── */
-  'undo.replaced': 'Draft replaced',
-  'undo.action': 'Undo',
-  'undo.announce': 'Draft replaced — press Undo to restore.',
+  'panel.langSame': 'Same as my text',
 
   /* ── errors (§4) ──────────────────────────────────────────────── */
   'error.badKey': 'API key problem',
@@ -81,11 +76,11 @@ export const en = {
   'error.quota': 'Out of quota',
   'error.network': 'Connection problem',
   'error.refusal': 'Model declined',
-  'error.tooLong': 'Draft too long',
+  'error.tooLong': 'Prompt too long',
   'error.softCap': 'Daily limit reached',
   'error.cancelled': 'Cancelled',
   'error.unknown': 'Something went wrong',
-  'error.draftSafe': 'Your draft is unchanged.',
+  'error.draftSafe': 'Your prompt is unchanged.',
   'error.retryIn': 'Retry in {seconds}s',
   'error.fellBack': '{failed} failed — used {used} instead.',
   'error.noInsert':
@@ -119,9 +114,9 @@ export const en = {
 
   /* Plain-language intro at the top of each settings tab — what it is FOR. */
   'intro.providers':
-    'PromptAmp works with your own AI key — your drafts go straight to that AI, never through a server of ours. Add a provider and paste its key to get started. Add more than one and it automatically falls back when the first is busy or out of credit.',
+    'PromptAmp works with your own AI key — your prompts go straight to that AI, never through a server of ours. Add a provider and paste its key to get started. Add more than one and it automatically falls back when the first is busy or out of credit.',
   'intro.profiles':
-    'A profile is how PromptAmp rewrites your draft — a different one for chatting, image prompts, code, and so on. It picks the right profile for each site automatically. To change how one writes, make your own copy.',
+    'A profile is how PromptAmp rewrites your prompt — a different one for chatting, image prompts, code, and so on. It picks the right profile for each site automatically. To change how one writes, make your own copy.',
   'intro.behavior':
     'Everyday options: the profile and language PromptAmp uses by default, a daily limit so it can’t run up your bill, and where to switch it off.',
   'intro.history': 'Every enhancement you have run, kept on this device only.',
@@ -220,11 +215,11 @@ export const en = {
   'behavior.defaultProfile': 'Default profile (used when auto-pick is off)',
   'behavior.hideEverywhere': 'Hide PromptAmp everywhere',
   'behavior.outputLanguage': 'Enhanced prompt language',
-  'behavior.outputLanguagePlaceholder': 'Same language as my draft',
+  'behavior.outputLanguagePlaceholder': 'Same language as my text',
   'lang.other': 'Other…',
   'lang.otherPlaceholder': 'e.g. Brazilian Portuguese',
   'behavior.outputLanguageHint':
-    'Write your draft in any language and get the enhanced prompt in this one. Leave it empty to keep your draft’s language — image and video prompts still go out in English, which is what those models are trained on.',
+    'Write your prompt in any language and get the enhanced prompt in this one. Leave it empty to keep your draft’s language — image and video prompts still go out in English, which is what those models are trained on.',
   'behavior.uiLanguage': 'PromptAmp’s own language',
   'behavior.uiLanguageAuto': 'Match my browser',
   'behavior.limits': 'Limits',
@@ -251,7 +246,7 @@ export const en = {
   /* ── options: about ───────────────────────────────────────────── */
   'about.privacy': 'Privacy',
   'about.privacyBody':
-    'PromptAmp has no servers. Your drafts go directly from your browser to the provider you chose, using your key. Nothing is collected, and there is no analytics of any kind.',
+    'PromptAmp has no servers. Your prompts go directly from your browser to the provider you chose, using your key. Nothing is collected, and there is no analytics of any kind.',
   'about.keyBody':
     'Your API key is stored in this browser’s local extension storage, never synced, and readable only by the background worker — never by the script running on web pages.',
   'about.historyBody':

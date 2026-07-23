@@ -9,11 +9,6 @@ import { browser } from '#imports';
 import { insertText } from '../insertion/engine';
 import { readValue } from '../insertion/detect';
 import {
-  takeSnapshot,
-  restoreField,
-  type FieldSnapshot,
-} from '../insertion/snapshot';
-import {
   DECLINE_SENTINEL,
   ENHANCE_PORT,
   type EnhanceServerMessage,
@@ -21,7 +16,6 @@ import {
 } from '../messaging/protocol';
 import { sendMessage } from '../messaging/client';
 import { t } from '../i18n';
-import { el } from './host';
 import { createPanel, type PanelHandle } from './panel';
 import { createSmoothStream, type SmoothStream } from './panel/stream';
 
@@ -36,10 +30,6 @@ import { createSmoothStream, type SmoothStream } from './panel/stream';
 
 /** Below this a response is fast enough that showing a skeleton is noise. */
 const SKELETON_DELAY_MS = 300;
-
-/** A brief transient: enough to catch the eye and be clicked, gone before it
- * nags. Native Ctrl+Z still works after it disappears (tier-1 insertion). */
-const UNDO_WINDOW_MS = 4_000;
 
 export interface SessionCallbacks {
   onStateChange: (state: 'loading' | 'idle' | 'done' | 'error') => void;
@@ -64,9 +54,6 @@ export function createSession(
   callbacks: SessionCallbacks,
 ): EnhanceSession {
   const draft = readValue(deps.field);
-  // Captured before anything happens, so "Restore original" and the Undo pill
-  // can put back exactly what the user had — directional marks included.
-  const snapshot: FieldSnapshot = takeSnapshot(deps.field);
 
   let port: ReturnType<typeof browser.runtime.connect> | null = null;
   let panel: PanelHandle | null = null;
@@ -407,73 +394,11 @@ export function createSession(
       return;
     }
 
+    // No confirmation pill — user verdict: it read as noise. The button's done
+    // flash is the acknowledgement, and tier-1 insertion keeps the host's own
+    // Ctrl+Z working as the undo path.
     callbacks.onStateChange('done');
-    showUndoPill(text);
     close();
-  }
-
-  /**
-   * Belt and braces on top of the host's native Ctrl+Z, which tier 1 preserves.
-   * A user who has just watched their draft get replaced should not have to
-   * know which undo stack they are in.
-   */
-  function showUndoPill(inserted: string): void {
-    const announce = el('span', {
-      class: 'pa-sr-only',
-      attrs: { role: 'status', 'aria-live': 'polite' },
-      text: t('undo.announce'),
-    });
-
-    const undo = el('button', {
-      attrs: { type: 'button' },
-      text: t('undo.action'),
-    });
-    const pill = el('div', {
-      class: 'pa-undo',
-      children: [el('span', { text: t('undo.replaced') }), undo, announce],
-    });
-
-    // Above the field, never below: what sits under a chat composer is the
-    // site's own send row and status bars, and a pill parked on top of those
-    // reads as broken. Viewport coordinates — the layer is fixed. Height is
-    // unknown before layout, so estimate, then correct after append.
-    const box = deps.field.getBoundingClientRect();
-    const left = Math.max(8, box.left);
-    pill.style.transform = `translate3d(${String(left)}px, ${String(
-      Math.max(8, box.top - 44),
-    )}px, 0)`;
-
-    deps.layer.append(pill);
-    const pillBox = pill.getBoundingClientRect();
-    pill.style.transform = `translate3d(${String(left)}px, ${String(
-      Math.max(8, box.top - pillBox.height - 8),
-    )}px, 0)`;
-
-    const dismiss = (): void => {
-      clearTimeout(timer);
-      clearInterval(watch);
-      pill.remove();
-    };
-    const timer = setTimeout(dismiss, UNDO_WINDOW_MS);
-
-    // The pill is only meaningful while the inserted text is still sitting in
-    // the field. The moment it is sent (field empties), edited, or the field
-    // leaves the DOM, an Undo would restore into the wrong world — and the
-    // pill would float over whatever the site shows next. Watch and dismiss.
-    const watch = setInterval(() => {
-      if (
-        !deps.field.isConnected ||
-        readValue(deps.field).trim() !== inserted.trim()
-      ) {
-        dismiss();
-      }
-    }, 500);
-
-    undo.addEventListener('click', () => {
-      restoreField(deps.field, snapshot);
-      deps.field.focus();
-      dismiss();
-    });
   }
 
   function stopPort(): void {

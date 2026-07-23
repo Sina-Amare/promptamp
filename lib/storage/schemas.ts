@@ -17,6 +17,7 @@ export const providerIdSchema = z.enum([
   'groq',
   'openrouter',
   'gemini',
+  'nvidia',
   'ollama',
   'lmstudio',
   /**

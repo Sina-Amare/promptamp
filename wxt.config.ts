@@ -11,6 +11,7 @@ const PROVIDER_API_HOSTS = [
   'https://api.groq.com/*',
   'https://openrouter.ai/*',
   'https://generativelanguage.googleapis.com/*',
+  'https://integrate.api.nvidia.com/*',
   // Local model runners (Ollama / LM Studio defaults).
   'http://localhost:11434/*',
   'http://127.0.0.1:11434/*',
@@ -60,6 +61,12 @@ export default defineConfig({
     ],
 
     host_permissions: PROVIDER_API_HOSTS,
+
+    // Full tab, never the cramped embedded box inside chrome://extensions —
+    // the settings page is a real page and deserves the room.
+    options_ui: {
+      open_in_tab: true,
+    },
 
     // For the "Custom (OpenAI-compatible)" provider only.
     //

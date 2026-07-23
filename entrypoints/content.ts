@@ -19,7 +19,9 @@ import type { ButtonCorner } from '../lib/storage/schemas';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
-  runAt: 'document_idle',
+  // document_end, not idle: heavy SPAs (Claude, ChatGPT) can hold idle back
+  // for seconds, and the button popping in mid-typing reads as broken.
+  runAt: 'document_end',
   // Frames get their own instance; a composer inside an iframe is still a
   // composer, and skipping them would miss Gmail and most embedded editors.
   allFrames: true,

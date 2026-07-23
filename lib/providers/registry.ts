@@ -134,6 +134,22 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
     setupUrl: 'https://aistudio.google.com/apikey',
   },
 
+  nvidia: {
+    id: 'nvidia',
+    label: 'NVIDIA (build.nvidia.com)',
+    kind: 'openai-compat',
+    // NIM's OpenAI-compatible surface; verified live (models + key auth).
+    baseUrl: 'https://integrate.api.nvidia.com',
+    chatPath: '/v1/chat/completions',
+    authStyle: 'bearer',
+    defaultModel: 'mistralai/mistral-medium-3.5-128b',
+    modelsPath: '/v1/models',
+    maxTokensField: 'max_tokens',
+    requiresKey: true,
+    allowsCustomBaseUrl: false,
+    setupUrl: 'https://build.nvidia.com',
+  },
+
   ollama: {
     id: 'ollama',
     label: 'Ollama (local)',
