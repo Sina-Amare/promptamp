@@ -449,7 +449,18 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     },
   });
 
-  const bodyWrap = el('div', { class: 'pa-body-wrap', children: [body] });
+  // Focusable: this region scrolls (long results, the streaming frame), and a
+  // scrollable region without keyboard access strands keyboard users — axe
+  // flags it as a blocking violation (scrollable-region-focusable).
+  const bodyWrap = el('div', {
+    class: 'pa-body-wrap',
+    attrs: {
+      tabindex: '0',
+      role: 'group',
+      'aria-label': t('panel.bodyAria'),
+    },
+    children: [body],
+  });
 
   // Polite, not assertive: this narrates progress, it does not interrupt.
   const status = el('div', {

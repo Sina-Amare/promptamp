@@ -215,9 +215,18 @@ export function createSession(
           // popover whose entrance animation animates `transform`, and the two
           // must not fight (that fight is what threw the panel to the top of the
           // page). With position:fixed these are viewport coordinates.
+          //
+          // Clamped HARD into the viewport: flip/shift only trade sides and
+          // slide horizontally, so a composer taller than the remaining space
+          // pushed the panel's header clean off the top of the screen (seen
+          // live on Grok with a long draft). Whatever the middleware decided,
+          // the panel ends up fully on screen.
+          const rect = panel.element.getBoundingClientRect();
+          const maxLeft = window.innerWidth - rect.width - 8;
+          const maxTop = window.innerHeight - rect.height - 8;
           Object.assign(panel.element.style, {
-            left: `${String(Math.round(x))}px`,
-            top: `${String(Math.round(y))}px`,
+            left: `${String(Math.round(Math.min(Math.max(8, x), maxLeft)))}px`,
+            top: `${String(Math.round(Math.min(Math.max(8, y), maxTop)))}px`,
           });
         });
       },

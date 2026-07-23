@@ -70,9 +70,6 @@ export interface TrackerOptions {
 /** Restores full opacity this long after the last keystroke (UX-SPEC §1.1). */
 const TYPING_IDLE_MS = 1000;
 
-/** Grace period on blur, so clicking the button (which blurs some editors) works. */
-const BLUR_GRACE_MS = 200;
-
 /** Safety net for layout changes no event reports. Deliberately 1 Hz, not rAF. */
 const POLL_MS = 1000;
 
@@ -91,7 +88,7 @@ export function createFieldTracker(
   let field: HTMLElement | null = null;
   let direction: 'ltr' | 'rtl' = 'ltr';
   let typingTimer: ReturnType<typeof setTimeout> | undefined;
-  let blurTimer: ReturnType<typeof setTimeout> | undefined;
+  let emitTimer: ReturnType<typeof setTimeout> | undefined;
   let pollTimer: ReturnType<typeof setInterval> | undefined;
   let scrollTargets: EventTarget[] = [];
   let fieldResize: ResizeObserver | null = null;
@@ -172,7 +169,6 @@ export function createFieldTracker(
   }
 
   function attach(candidate: HTMLElement): void {
-    clearTimeout(blurTimer);
     if (field === candidate) return;
 
     field = candidate;
@@ -216,7 +212,10 @@ export function createFieldTracker(
       reposition();
     });
     fieldResize.observe(candidate);
-    pollTimer = setInterval(reposition, POLL_MS);
+    pollTimer = setInterval(() => {
+      reposition();
+      emitDraft();
+    }, POLL_MS);
   }
 
   function detach(): void {
@@ -236,6 +235,7 @@ export function createFieldTracker(
     clearTimeout(scrollSettle);
     clearInterval(pollTimer);
     clearTimeout(typingTimer);
+    clearTimeout(emitTimer);
     field = null;
     callbacks.onDetach();
   }
@@ -252,8 +252,9 @@ export function createFieldTracker(
     if (options.isSuppressed()) return;
     const target =
       deepActiveElement(document) ?? (event.target as Element | null);
+    // Focus on another qualifying composer switches the disc there. Focus on
+    // anything else changes nothing — the disc is a fixture of its composer.
     if (qualifies(target)) attach(target);
-    else if (target && !options.isOwnNode(target)) scheduleDetach();
   }
 
   // Some editors take focus programmatically or swap their node under a live
@@ -269,18 +270,13 @@ export function createFieldTracker(
   }
 
   function onFocusOut(): void {
-    scheduleDetach();
-  }
-
-  function scheduleDetach(): void {
-    clearTimeout(blurTimer);
-    blurTimer = setTimeout(() => {
-      const active = deepActiveElement(document);
-      // Focus may have moved into our own UI, which is not a reason to leave.
-      if (active && options.isOwnNode(active)) return;
-      if (active && active === field) return;
-      detach();
-    }, BLUR_GRACE_MS);
+    // Deliberately nothing. The disc is a fixture of the composer, NOT of
+    // focus: clicking DevTools, a scrollbar, or page chrome used to detach it
+    // — which read as "the icon randomly disappears on long drafts" in live
+    // testing (the user compared two screenshots of the same page, one with
+    // the disc and one without; the difference was only where focus sat).
+    // The disc now leaves only when its field leaves the DOM or its viewport
+    // (reposition/poll handle that), or when another composer takes focus.
   }
 
   function onKeyDown(event: KeyboardEvent): void {
@@ -297,6 +293,10 @@ export function createFieldTracker(
     // text didn't enable the button until the user typed a character.
     if (!field?.contains(event.target as Node)) return;
     emitDraft();
+    // Rich editors (ProseMirror) apply a paste AFTER the input event fires, so
+    // a single synchronous read sees the old value. Read again shortly after.
+    clearTimeout(emitTimer);
+    emitTimer = setTimeout(emitDraft, 150);
 
     callbacks.onTypingChange(true);
     clearTimeout(typingTimer);
