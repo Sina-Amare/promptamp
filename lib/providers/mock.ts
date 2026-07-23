@@ -1,4 +1,4 @@
-import type { ErrorKind } from '../messaging/protocol';
+import { DECLINE_SENTINEL, type ErrorKind } from '../messaging/protocol';
 import { ProviderError, errorFor } from './errors';
 import type { ChatRequest, ChatResponse } from './types';
 
@@ -72,6 +72,11 @@ export const mockAdapter = async (req: ChatRequest): Promise<ChatResponse> => {
   }
 
   const draft = extractDraft(user).replace(DIRECTIVE, '').trim();
+
+  if (command === 'decline') {
+    // Drives the "Nothing to enhance yet" note — a draft with no request.
+    return withUsage(draft, DECLINE_SENTINEL);
+  }
 
   if (command === 'identical') {
     // Drives the "Already looks good" notice (UX-SPEC §2.2).

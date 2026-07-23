@@ -46,6 +46,9 @@ export const en = {
   'panel.busy': 'Enhancing draft',
   'panel.ready': 'Enhanced version ready',
   'panel.unchanged': 'This already reads well',
+  'panel.declineTitle': 'Nothing to enhance yet',
+  'panel.declineBody':
+    'This doesn’t look like a prompt yet. Type what you want to ask or make, then enhance it — your draft is untouched.',
   'panel.accept': 'Replace draft',
   'panel.copy': 'Copy',
   'panel.retry': 'Retry',

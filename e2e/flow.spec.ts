@@ -53,6 +53,24 @@ test('button appears on focus and is a ghost until the draft is long enough', as
   );
 });
 
+test('declines a no-request draft with a gentle note, not a fabricated prompt', async ({
+  page,
+}) => {
+  await page.goto('http://localhost:5174/');
+  const field = page.getByTestId('plain-textarea');
+  await field.fill('asdfghjkl qwerty [[mock:decline]]');
+  await field.click();
+  await button(page).click();
+
+  await expect(panel(page)).toBeVisible();
+  // A calm note — not a rewrite, and not the red of a real error.
+  await expect(page.locator('.pa-decline')).toBeVisible();
+  await expect(page.locator('.pa-decline')).toContainText('Nothing to enhance');
+  await expect(page.locator('.pa-error')).toHaveCount(0);
+  // No Replace: there is nothing to insert into the field.
+  await expect(page.locator('.pa-primary')).toBeDisabled();
+});
+
 test('never appears on a password field', async ({ page }) => {
   await page.goto('http://localhost:5174/');
   await page.getByTestId('password-input').click();

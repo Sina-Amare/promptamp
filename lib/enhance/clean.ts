@@ -1,3 +1,4 @@
+import { DECLINE_SENTINEL } from '../messaging/protocol';
 import { errorFor } from '../providers/errors';
 
 /**
@@ -53,6 +54,8 @@ export interface CleanResult {
   text: string;
   /** True when the rewrite is effectively the draft — drives "Already looks good". */
   unchanged: boolean;
+  /** The profile emitted the no-request sentinel — there was nothing to rewrite. */
+  declined?: boolean;
 }
 
 export function clean(raw: string, draft: string): CleanResult {
@@ -80,6 +83,16 @@ export function clean(raw: string, draft: string): CleanResult {
 
   text = stripCodeFence(text.trim());
   text = stripWrappingQuotes(text).trim();
+
+  // The no-request sentinel: the draft held nothing to rewrite. Tolerate a
+  // little stray punctuation a cheap model may tack on. Not an error — the panel
+  // shows a friendly note and the draft is left untouched.
+  if (
+    text.includes(DECLINE_SENTINEL) &&
+    text.replace(DECLINE_SENTINEL, '').trim().length <= 3
+  ) {
+    return { text: '', unchanged: false, declined: true };
+  }
 
   if (!text) throw errorFor('refusal');
 

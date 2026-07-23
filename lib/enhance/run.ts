@@ -198,11 +198,25 @@ async function finish(args: FinishArgs): Promise<EnhanceResult> {
 
   // Client-side defence: the prompts forbid lead-ins and fences, and cheap
   // models emit them anyway.
-  const { text } = clean(response.text, request.draft);
+  const { text, declined } = clean(response.text, request.draft);
 
   // Awaited: the soft cap is the only guard against a runaway loop spending
   // the user's money, and a dropped increment quietly weakens it.
   await recordRequest();
+
+  // Nothing to rewrite: return a declined result the panel renders as a gentle
+  // note. No history entry — there is no enhancement to keep.
+  if (declined) {
+    return {
+      text: '',
+      declined: true,
+      profileId,
+      providerId: connection.providerId,
+      model: connection.model,
+      connectionLabel: connection.label,
+      ...(fellBackFrom ? { fellBackFrom } : {}),
+    };
+  }
 
   const costUsd = estimateCostUsd(
     connection.providerId,

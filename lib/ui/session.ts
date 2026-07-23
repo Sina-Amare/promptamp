@@ -14,6 +14,7 @@ import {
   type FieldSnapshot,
 } from '../insertion/snapshot';
 import {
+  DECLINE_SENTINEL,
   ENHANCE_PORT,
   type EnhanceServerMessage,
   type SafeError,
@@ -71,6 +72,9 @@ export function createSession(
   let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
   let cleanupPosition: (() => void) | undefined;
   let stream: SmoothStream | null = null;
+  // Raw text seen so far this run, so a decline (which begins with a bracket no
+  // rewrite starts with) can be held back before it ever reaches the panel.
+  let rawSoFar = '';
   let closed = false;
   let chipsLoaded = false;
   // The Structured chip is a one-off transform, not a profile change — so its
@@ -226,6 +230,7 @@ export function createSession(
   function run(opts: RunOptions = {}): void {
     if (closed) return;
     stopPort();
+    rawSoFar = '';
     callbacks.onStateChange('loading');
 
     // Nothing visible for 300 ms — a sub-second response should never flash a
@@ -255,14 +260,25 @@ export function createSession(
           // First delta wins the race against the skeleton timer: if the
           // model answered fast, the user never sees a loading state at all.
           clearTimeout(skeletonTimer);
+          rawSoFar += message.text;
+          // Hold the reveal back only while the output could still be the
+          // decline sentinel. A real rewrite never starts with its leading
+          // bracket, so it diverges on the first character and streams with no
+          // delay; only a decline is withheld, so it never flashes on screen.
+          if (!stream && DECLINE_SENTINEL.startsWith(rawSoFar.trimStart())) {
+            break;
+          }
           const panelRef = ensurePanel();
           if (!stream) {
             panelRef.beginStreaming();
             stream = createSmoothStream((partial) => {
               panelRef.streamText(partial);
             });
+            // Flush everything held so far, not just this delta.
+            stream.push(rawSoFar);
+          } else {
+            stream.push(message.text);
           }
-          stream.push(message.text);
           break;
         }
 
@@ -271,6 +287,7 @@ export function createSession(
           // and go back to loading rather than splicing two answers.
           stream?.cancel();
           stream = null;
+          rawSoFar = '';
           ensurePanel().showLoading();
           break;
 
@@ -281,6 +298,12 @@ export function createSession(
           stream?.finish();
           stream = null;
           callbacks.onStateChange('idle');
+          // Nothing to rewrite: a gentle note, the draft left untouched — never
+          // a fabricated "I need help" prompt.
+          if (message.result.declined) {
+            ensurePanel().showDecline();
+            break;
+          }
           ensurePanel().showResult(message.result.text, draft);
           // A silent switch would hide both that a key needs attention and
           // that a different model wrote this.

@@ -523,6 +523,27 @@ export const PANEL_CSS = `
   gap: var(--ph-space-2);
 }
 
+/* Decline: nothing to enhance. Calm and neutral — the muted title separates it
+   from the red of a real error. */
+.pa-decline {
+  display: grid;
+  gap: var(--ph-space-2);
+  padding: var(--ph-space-4);
+  color: var(--ph-text);
+  font: var(--ph-type-body) var(--ph-font);
+}
+
+.pa-decline-title {
+  color: var(--ph-text);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.pa-decline p {
+  color: var(--ph-text-muted);
+  font-size: 13px;
+}
+
 /* ── undo pill (§2.5) ──────────────────────────────────────────── */
 
 .pa-undo {

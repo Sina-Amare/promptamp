@@ -248,12 +248,26 @@ export interface EnhanceRequest {
 export type EnhanceClientMessage =
   ({ type: 'start' } & EnhanceRequest) | { type: 'cancel' };
 
+/**
+ * What a profile emits, verbatim and alone, when the draft holds no request to
+ * rewrite (keyboard-mashing, a stray fragment). It leads with a bracket no real
+ * rewrite starts with, so the panel can recognise a decline from its first
+ * character and never flash it mid-stream. The panel shows a friendly note and
+ * leaves the draft untouched — it is never a prompt to send.
+ */
+export const DECLINE_SENTINEL = '⟦NO_PROMPT⟧';
+
 export interface EnhanceResult {
   text: string;
   profileId: string;
   providerId: ProviderId;
   model: string;
   connectionLabel: string;
+  /**
+   * The draft had no request to rewrite. The panel shows a gentle "nothing to
+   * enhance yet" note instead of a rewrite, and offers no Replace.
+   */
+  declined?: boolean;
   /**
    * Set when an earlier connection failed and this one took over. The panel
    * says so — a silent switch would hide that a key needs attention, and would

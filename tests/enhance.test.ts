@@ -13,6 +13,7 @@ import {
   stripWrappingQuotes,
 } from '../lib/enhance/clean';
 import { BUILTIN_PROFILES, builtinProfile } from '../lib/enhance/prompts';
+import { DECLINE_SENTINEL } from '../lib/messaging/protocol';
 import {
   findProfile,
   listProfiles,
@@ -287,6 +288,18 @@ describe('clean', () => {
   it('rejects an empty result rather than clearing the field', () => {
     expect(() => clean('   ', draft)).toThrow();
     expect(() => clean('Here is the improved prompt:', draft)).toThrow();
+  });
+
+  it('reports a decline when the model emits the no-request sentinel', () => {
+    const declined = clean(DECLINE_SENTINEL, draft);
+    expect(declined.declined).toBe(true);
+    expect(declined.text).toBe('');
+    // Tolerates a little stray punctuation a cheap model may tack on.
+    expect(clean(`${DECLINE_SENTINEL}.`, draft).declined).toBe(true);
+    // A real rewrite that merely mentions the token is not a decline.
+    expect(
+      clean(`Explain ${DECLINE_SENTINEL} to a beginner`, draft).declined,
+    ).toBeFalsy();
   });
 
   it('rejects a model that answered instead of rewriting', () => {

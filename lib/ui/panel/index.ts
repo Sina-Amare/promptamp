@@ -63,6 +63,8 @@ export interface PanelHandle {
   streamText: (partial: string) => void;
   showResult: (text: string, original: string) => void;
   showError: (error: SafeError) => void;
+  /** The draft held no request to rewrite: a gentle note, no Replace. */
+  showDecline: () => void;
   showNotice: (message: string) => void;
   setProfile: (name: string, auto: boolean) => void;
   /** The list the profile chip menu offers, and which is current. */
@@ -826,6 +828,42 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
         );
         // Focus the recovery action, not the message.
         retry.focus();
+        setControlsEnabled(false);
+      } finally {
+        setBusy(false);
+      }
+    },
+
+    showDecline: () => {
+      try {
+        const dismiss = el('button', {
+          class: 'pa-secondary',
+          attrs: { type: 'button' },
+          text: t('panel.close'),
+        });
+        dismiss.addEventListener('click', callbacks.onDiscard);
+
+        bodyWrap.replaceChildren(
+          el('div', {
+            class: 'pa-decline',
+            // role=status, not alert: this is calm guidance, not a failure.
+            attrs: { role: 'status' },
+            children: [
+              el('div', {
+                class: 'pa-decline-title',
+                text: t('panel.declineTitle'),
+              }),
+              el('p', { text: t('panel.declineBody') }),
+              el('div', {
+                class: 'pa-error-actions',
+                children: [dismiss],
+              }),
+            ],
+          }),
+        );
+        dismiss.focus();
+        // No Replace and no Retry: there is nothing to insert, and re-running
+        // the same non-prompt would only decline again.
         setControlsEnabled(false);
       } finally {
         setBusy(false);
