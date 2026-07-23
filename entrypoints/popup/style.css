@@ -11,7 +11,7 @@
   --border: rgba(0, 0, 0, 0.14);
   --text: #1a1a21;
   --text-muted: #5c5c66;
-  --accent: #0e7490;
+  --accent: #047857;
   --accent-fg: #ffffff;
 }
 
@@ -22,8 +22,8 @@
     --border: rgba(255, 255, 255, 0.16);
     --text: #ededf2;
     --text-muted: #a2a2ae;
-    --accent: #38bdf8;
-    --accent-fg: #08131f;
+    --accent: #34d399;
+    --accent-fg: #04281b;
   }
 }
 

@@ -210,6 +210,28 @@ export function placeButton(
     : CORNER_LADDER;
 
   for (const corner of ladder) {
+    // The bottom row is special: chat composers keep their controls at the
+    // row's physical edges ("+" at the left, mic/send at the right) and leave
+    // the middle empty. Start at the physical bottom-right and slide toward
+    // that empty middle until a free slot appears — the one spot a human
+    // would call "empty space". Physical on purpose: control clusters sit at
+    // the same corners whatever the text direction, so RTL cannot flip the
+    // disc onto the text.
+    if (corner === 'bottom-end') {
+      const rowTop = rect.top + rect.height - EDGE_INSET - size;
+      for (let step = 0; step < 6; step++) {
+        const left =
+          rect.left + rect.width - EDGE_INSET - size - step * HIT_ZONE;
+        if (left < rect.left + EDGE_INSET) break;
+        const slot: Point = { top: rowTop, left };
+        if (!fitsInViewport(slot, size)) continue;
+        if (!isCornerOccupied(slot, HIT_ZONE, ignore)) {
+          return { corner, point: slot, forced: false };
+        }
+      }
+      continue;
+    }
+
     const point = cornerPosition(rect, corner, direction, size);
     // Skip a placement that would put the button off-screen (a field flush to
     // the window edge has no room for an outside corner).

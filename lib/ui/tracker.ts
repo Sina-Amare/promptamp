@@ -6,7 +6,7 @@ import {
 } from '../insertion/detect';
 import { isEnhanceable } from '../enhance/assemble';
 import type { ButtonCorner } from '../storage/schemas';
-import { cornerPosition, isFieldVisible, placeButton } from './position';
+import { isFieldVisible, placeButton } from './position';
 
 /**
  * Watches which field has focus and keeps the button pinned to it.
@@ -94,6 +94,10 @@ export function createFieldTracker(
   // a scroll cannot hop the disc between rungs as viewport geometry shifts —
   // it moves only when its corner genuinely stops fitting.
   let lastCorner: ReturnType<typeof placeButton>['corner'] | null = null;
+  // The disc's exact offset from the field's top-left at the last full
+  // placement. The scroll glide re-applies this offset verbatim, so a slot
+  // chosen inside the send row is held to the pixel while scrolling.
+  let lastOffset: { dx: number; dy: number } | null = null;
   // The scroll glide: a rAF loop alive only while scroll events stream in.
   let scrollRaf = 0;
   let scrollSettle: ReturnType<typeof setTimeout> | undefined;
@@ -124,6 +128,11 @@ export function createFieldTracker(
       options.isOwnNode,
     );
     lastCorner = placement.corner;
+    const box = field.getBoundingClientRect();
+    lastOffset = {
+      dx: placement.point.left - box.left,
+      dy: placement.point.top - box.top,
+    };
     callbacks.onMove(placement.point, placement.corner);
   }
 
@@ -143,6 +152,11 @@ export function createFieldTracker(
       options.isOwnNode,
     );
     lastCorner = placement.corner;
+    const box = candidate.getBoundingClientRect();
+    lastOffset = {
+      dx: placement.point.left - box.left,
+      dy: placement.point.top - box.top,
+    };
 
     callbacks.onAttach({
       element: candidate,
@@ -176,6 +190,7 @@ export function createFieldTracker(
     fieldResize?.disconnect();
     fieldResize = null;
     lastCorner = null;
+    lastOffset = null;
     if (scrollRaf !== 0) {
       cancelAnimationFrame(scrollRaf);
       scrollRaf = 0;
@@ -258,15 +273,14 @@ export function createFieldTracker(
    */
   function glide(): void {
     scrollRaf = 0;
-    if (!field || !lastCorner || !field.isConnected) return;
+    if (!field || !lastCorner || !lastOffset || !field.isConnected) return;
     const box = field.getBoundingClientRect();
-    const point = cornerPosition(
-      { top: box.top, left: box.left, width: box.width, height: box.height },
+    // The exact placed offset, re-applied — never re-derived — so the disc is
+    // pixel-glued to its slot while the field moves.
+    callbacks.onMove(
+      { top: box.top + lastOffset.dy, left: box.left + lastOffset.dx },
       lastCorner,
-      direction,
-      options.buttonSize,
     );
-    callbacks.onMove(point, lastCorner);
     scrollRaf = requestAnimationFrame(glide);
   }
 

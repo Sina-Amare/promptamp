@@ -1,14 +1,16 @@
 import { svg } from '../host';
 
 /**
- * The enhance mark — a large AI sparkle with a smaller companion, the widely
- * understood "improve this with AI" glyph. A monochrome version of the
- * store/logo mark (`assets/icon.svg`), so the floating button, the toolbar icon
- * and the brand read as one system.
+ * The transform mark — a magic wand with a spark at its tip and a small
+ * twinkle beside it: "transform this text". Chosen over the bare sparkle every
+ * AI feature now ships. A monochrome version of the store/logo mark
+ * (`assets/icon.svg`), so the floating button, the toolbar icon and the brand
+ * read as one system.
  *
  * Single-colour on `currentColor` because it sits on the solid disc and has to
- * recolour with the button's state (white on teal idle, danger on error, dark
- * on the amber done flash). A logo-class mark, so it is never mirrored in RTL.
+ * recolour with the button's state (white on the emerald idle disc, danger on
+ * error, dark on the amber done flash). A logo-class mark, never mirrored in
+ * RTL.
  */
 export function promptMark(): SVGElement {
   return svg(
@@ -22,15 +24,24 @@ export function promptMark(): SVGElement {
       height: '15',
     },
     [
-      // The primary four-point sparkle (arms pinch to the centre).
+      // The wand shaft, tip to the upper right.
       svg('path', {
-        d: 'M10.5 5 Q10.5 12.5 18 12.5 Q10.5 12.5 10.5 20 Q10.5 12.5 3 12.5 Q10.5 12.5 10.5 5 Z',
+        d: 'M5.4 18.6 L13.4 10.6',
+        stroke: 'currentColor',
+        'stroke-width': '2.1',
+        'stroke-linecap': 'round',
+      }),
+      // The spark at the wand's tip (arms pinch to the centre).
+      svg('path', {
+        d: 'M16.9 4.9 Q16.9 7.9 19.9 7.9 Q16.9 7.9 16.9 10.9 Q16.9 7.9 13.9 7.9 Q16.9 7.9 16.9 4.9 Z',
         fill: 'currentColor',
       }),
-      // The smaller companion sparkle, upper-right.
+      // A small plus-twinkle trailing the motion.
       svg('path', {
-        d: 'M18.8 2.6 Q18.8 5.5 21.7 5.5 Q18.8 5.5 18.8 8.4 Q18.8 5.5 15.9 5.5 Q18.8 5.5 18.8 2.6 Z',
-        fill: 'currentColor',
+        d: 'M6.6 6.2 v2.4 M5.4 7.4 h2.4',
+        stroke: 'currentColor',
+        'stroke-width': '1.7',
+        'stroke-linecap': 'round',
       }),
     ],
   );

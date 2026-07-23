@@ -18,10 +18,10 @@ export const TOKENS_CSS = `
   --ph-border: rgba(0, 0, 0, 0.14);
   --ph-text: #1A1A21;          /* 15.2:1 */
   --ph-text-muted: #5C5C66;    /*  5.9:1 */
-  /* Teal brand. Deep enough for AA as text: #0E7490 on white ≈ 5.4:1, so links
-     and the inline actions pass color-contrast; white on it (the disc icon) is
-     the same 5.4:1. */
-  --ph-accent: #0E7490;
+  /* Emerald brand. Deep enough for AA as text: #047857 on white ≈ 5.1:1, so
+     links and the inline actions pass color-contrast; white on it (the disc
+     icon) is the same 5.1:1. */
+  --ph-accent: #047857;
   --ph-accent-fg: #FFFFFF;
   /* The "amplify" accent, from the logo. Amber is light, so its foreground is
      dark ink — #1A1A21 on #F59E0B ≈ 9:1. Reserved for the single commit action
@@ -81,9 +81,9 @@ export const TOKENS_CSS = `
   --ph-border: rgba(255, 255, 255, 0.16);
   --ph-text: #EDEDF2;          /* 13.9:1 */
   --ph-text-muted: #A2A2AE;    /*  6.4:1 */
-  /* Sky-400 reads bright and clean on the dark surface; near-black ink on it. */
-  --ph-accent: #38BDF8;
-  --ph-accent-fg: #08131F;
+  /* Emerald-400 reads bright and clean on the dark surface; near-black ink. */
+  --ph-accent: #34D399;
+  --ph-accent-fg: #04281B;
   /* Amber-400 reads brighter on the dark surface; dark ink foreground holds. */
   --ph-action: #FBBF24;
   --ph-action-fg: #1A1A21;
