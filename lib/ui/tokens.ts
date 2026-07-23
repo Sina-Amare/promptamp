@@ -18,9 +18,10 @@ export const TOKENS_CSS = `
   --ph-border: rgba(0, 0, 0, 0.14);
   --ph-text: #1A1A21;          /* 15.2:1 */
   --ph-text-muted: #5C5C66;    /*  5.9:1 */
-  /* Teal brand. #0284C7 on white ≈ 4.1:1, white on it ≈ 4.1:1 — enough for the
-     disc icon, focus rings, and links (bold). */
-  --ph-accent: #0284C7;
+  /* Teal brand. Deep enough for AA as text: #0E7490 on white ≈ 5.4:1, so links
+     and the inline actions pass color-contrast; white on it (the disc icon) is
+     the same 5.4:1. */
+  --ph-accent: #0E7490;
   --ph-accent-fg: #FFFFFF;
   /* The "amplify" accent, from the logo. Amber is light, so its foreground is
      dark ink — #1A1A21 on #F59E0B ≈ 9:1. Reserved for the single commit action

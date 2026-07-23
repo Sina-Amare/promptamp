@@ -6,7 +6,7 @@
     Regenerate the PNG set with `pnpm icons` after editing this file; the in-page
     button carries a monochrome version of the same sparkle.
   -->
-  <rect x="4" y="4" width="92" height="92" rx="24" fill="#0284C7"/>
+  <rect x="4" y="4" width="92" height="92" rx="24" fill="#0E7490"/>
   <path d="M44 24 Q44 52 72 52 Q44 52 44 80 Q44 52 16 52 Q44 52 44 24 Z" fill="#FFFFFF"/>
   <path d="M72 18 Q72 28 82 28 Q72 28 72 38 Q72 28 62 28 Q72 28 72 18 Z" fill="#FBBF24"/>
 </svg>
