@@ -74,6 +74,8 @@ export const openaiCompatAdapter = async (
   const streaming = onChunk !== undefined;
 
   const body: Record<string, unknown> = {
+    // Provider-specific fields first, so the essentials below always win.
+    ...(config.extraBody ?? {}),
     model: cred.model,
     messages: [
       { role: 'system', content: system },

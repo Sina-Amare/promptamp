@@ -22,6 +22,14 @@ export interface ProviderConfig {
   defaultModel: string;
   modelsPath?: string;
   /**
+   * Extra request-body fields merged into every chat call for this provider
+   * (never overriding model/messages/stream). Used to switch off Gemini's
+   * "thinking": prompt rewriting is a transformation, not a reasoning task, and
+   * a thinking model otherwise streams nothing for many seconds while it thinks
+   * and spends the output budget on hidden tokens instead of the rewrite.
+   */
+  extraBody?: Record<string, unknown>;
+  /**
    * OpenAI moved to `max_completion_tokens`; every other OpenAI-compatible
    * server still expects `max_tokens`.
    */
@@ -117,6 +125,9 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
     defaultModel: 'gemini-2.0-flash',
     // No modelsPath: the OpenAI-compat surface has no /models endpoint (it
     // 404s), so listModels() reads Gemini's native /v1beta/models instead.
+    // Thinking off: 2.5 models otherwise burn the token budget reasoning
+    // silently, so the panel sits blank and the rewrite comes back truncated.
+    extraBody: { reasoning_effort: 'none' },
     maxTokensField: 'max_tokens',
     requiresKey: true,
     allowsCustomBaseUrl: false,

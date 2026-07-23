@@ -293,6 +293,26 @@ describe('openai-compat adapter', () => {
     expect(groqBody.max_tokens).toBe(1024);
   });
 
+  it('turns off thinking for Gemini, but adds nothing for others', async () => {
+    // Gemini 2.5 models otherwise think silently — the panel stalls and the
+    // token budget goes to hidden reasoning instead of the rewrite.
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(
+          jsonResponse({ choices: [{ message: { content: 'x' } }] }),
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await openaiCompatAdapter(request('gemini'));
+    await openaiCompatAdapter(request('groq'));
+
+    expect(bodyOf(fetchMock, 0).reasoning_effort).toBe('none');
+    // Never sent to a provider that would reject an unknown field.
+    expect(bodyOf(fetchMock, 1).reasoning_effort).toBeUndefined();
+  });
+
   it('retries a 429 at most twice, then surfaces it', async () => {
     const fetchMock = vi
       .fn()
