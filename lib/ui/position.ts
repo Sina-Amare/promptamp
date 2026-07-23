@@ -219,7 +219,7 @@ export function shellRect(field: Element, fieldBox: DOMRect): DOMRect {
     // Multi-line composers (ChatGPT, Claude): the control row sits BELOW the
     // text block, inside a wrapper that spans it horizontally.
     const rowBelow =
-      box.bottom - fieldBox.bottom >= 36 &&
+      box.bottom - fieldBox.bottom >= 24 &&
       box.left <= fieldBox.left + 16 &&
       box.right >= fieldBox.right - 16;
 
@@ -249,8 +249,7 @@ function overText(field: Element, point: Point, size: number): boolean {
   const y = point.top + size / 2;
   const xs = [point.left + 4, point.left + size / 2, point.left + size - 4];
   for (const x of xs) {
-    const caret = doc.caretRangeFromPoint?.(x, y);
-    const node = caret?.startContainer;
+    const node = doc.caretRangeFromPoint?.(x, y)?.startContainer;
     if (!node || node.nodeType !== Node.TEXT_NODE || !field.contains(node)) {
       continue;
     }
@@ -285,6 +284,48 @@ function overText(field: Element, point: Point, size: number): boolean {
  * the corner anyway — a visible disc beats a missing one. Deterministic in,
  * deterministic out: the same field always yields the same spot.
  */
+/**
+ * The vertical centre of the composer's control row — the band holding the
+ * send / mic / model buttons — read from those buttons, not guessed from
+ * geometry. Ground-truthed on chatgpt.com: the editable's own rect overlaps
+ * the control row, so anchoring to the editable's bottom lands the disc ON the
+ * send button (or, when the draft grows tall, in dead space below the box).
+ * The buttons never lie about where the row is.
+ */
+export function controlRowCenter(
+  field: Element,
+  ignore: (el: Element) => boolean,
+): number | null {
+  let container: Element = field;
+  let node: Element | null = field.parentElement;
+  for (let i = 0; i < 5 && node; i++) {
+    container = node;
+    if (node.tagName === 'FORM') break;
+    node = node.parentElement;
+  }
+  const fb = field.getBoundingClientRect();
+  const centers: number[] = [];
+  for (const b of container.querySelectorAll('button, [role="button"]')) {
+    if (ignore(b)) continue;
+    const r = b.getBoundingClientRect();
+    // A control-row button: actionable-sized and sitting in the lower half of
+    // the composer — never a header/toolbar button far above the field.
+    if (
+      r.width >= 16 &&
+      r.height >= 16 &&
+      r.width <= 120 &&
+      r.height <= 120 &&
+      r.top + r.height / 2 >= fb.top + fb.height * 0.4 &&
+      r.top <= fb.bottom + 24
+    ) {
+      centers.push(r.top + r.height / 2);
+    }
+  }
+  if (centers.length === 0) return null;
+  centers.sort((a, b) => a - b);
+  return centers[Math.floor(centers.length / 2)]!;
+}
+
 export function placeButton(
   field: Element,
   direction: 'ltr' | 'rtl',
@@ -304,12 +345,17 @@ export function placeButton(
   const startIsRight = preferred !== 'bottom-start';
   const corner: ButtonCorner = startIsRight ? 'bottom-end' : 'bottom-start';
 
-  // A box shorter than the disc + insets has no "bottom row" — the row IS the
-  // box. Centre vertically there, or the maths lands above the top edge.
+  // Anchor the disc's vertical line to the real control row when we can find
+  // it. Only then fall back to the field's own bottom (a box shorter than the
+  // disc has no row — the row IS the box; centre there or the maths lands
+  // above the top edge).
+  const rowCenter = controlRowCenter(field, ignore);
   const rowTop =
-    rect.height < size + EDGE_INSET * 2
-      ? rect.top + (rect.height - size) / 2
-      : rect.top + rect.height - EDGE_INSET - size;
+    rowCenter !== null
+      ? rowCenter - size / 2
+      : rect.height < size + EDGE_INSET * 2
+        ? rect.top + (rect.height - size) / 2
+        : rect.top + rect.height - EDGE_INSET - size;
 
   const slotAt = (step: number): number =>
     startIsRight

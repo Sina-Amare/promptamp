@@ -176,7 +176,11 @@
           <label id="gpt-label"
             >ChatGPT-style (internal scroll on long text)</label
           >
-          <div class="chat-shell" data-testid="gpt-shell">
+          <!-- True repro of chatgpt.com's ground-truth DOM: the editable's own
+               rect extends DOWN over the control row (padding-bottom), so its
+               bottom-right corner sits ON the send button — the exact geometry
+               that defeated every field-based placement. -->
+          <div class="chat-shell gpt-shell" data-testid="gpt-shell">
             <div
               class="chat-editable gpt-scroll"
               data-testid="gpt-editable"
@@ -185,7 +189,7 @@
               aria-multiline="true"
               aria-labelledby="gpt-label"
             ></div>
-            <div class="chat-row">
+            <div class="chat-row gpt-row">
               <button type="button" class="chat-btn">+</button>
               <span class="chat-spacer"></span>
               <button type="button" class="chat-model">High ▾</button>

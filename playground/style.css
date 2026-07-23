@@ -251,3 +251,19 @@ button[data-testid='close-dialog'] {
   white-space: nowrap;
   overflow-x: hidden;
 }
+
+/* ChatGPT true repro (from the live DOM): editable [551x42] whose bottom (650)
+   overlaps the control row's top (+ button at 640). The row is a real band
+   BELOW the text, pulled up 10px so its RECT overlaps the editable's bottom —
+   which is exactly what defeats field-bottom placement — while the visible
+   text stays above it. */
+.gpt-shell .gpt-scroll {
+  max-height: 120px;
+}
+.gpt-shell .gpt-row {
+  margin-top: -10px;
+  position: relative;
+  z-index: 1;
+  padding-top: 8px;
+  background: var(--surface);
+}
