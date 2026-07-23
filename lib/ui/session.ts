@@ -75,6 +75,9 @@ export function createSession(
   // Raw text seen so far this run, so a decline (which begins with a bracket no
   // rewrite starts with) can be held back before it ever reaches the panel.
   let rawSoFar = '';
+  // Diagnostic: logged once per run so a stuck enhancement is visible in the
+  // page console — did it start, did tokens arrive, did it finish or error?
+  let firstChunkSeen = false;
   let closed = false;
   let chipsLoaded = false;
   // The Structured chip is a one-off transform, not a profile change — so its
@@ -231,6 +234,12 @@ export function createSession(
     if (closed) return;
     stopPort();
     rawSoFar = '';
+    firstChunkSeen = false;
+    console.info('[PromptAmp] enhance start', {
+      origin: deps.origin,
+      profileId: opts.profileId ?? 'auto',
+      ...(opts.adjust ? { adjust: opts.adjust } : {}),
+    });
     callbacks.onStateChange('loading');
 
     // Nothing visible for 300 ms — a sub-second response should never flash a
@@ -241,7 +250,15 @@ export function createSession(
       ensurePanel().showLoading();
     }, SKELETON_DELAY_MS);
 
-    port = browser.runtime.connect({ name: ENHANCE_PORT });
+    try {
+      port = browser.runtime.connect({ name: ENHANCE_PORT });
+    } catch {
+      // The extension was reloaded out from under this tab, so the runtime is
+      // gone. Say so plainly instead of throwing into the page's console.
+      clearTimeout(skeletonTimer);
+      handleError({ kind: 'unknown', message: t('error.reloaded') });
+      return;
+    }
 
     port.onMessage.addListener((raw: unknown) => {
       const message = raw as EnhanceServerMessage;
@@ -260,6 +277,10 @@ export function createSession(
           // First delta wins the race against the skeleton timer: if the
           // model answered fast, the user never sees a loading state at all.
           clearTimeout(skeletonTimer);
+          if (!firstChunkSeen) {
+            firstChunkSeen = true;
+            console.info('[PromptAmp] streaming…');
+          }
           rawSoFar += message.text;
           // Hold the reveal back only while the output could still be the
           // decline sentinel. A real rewrite never starts with its leading
@@ -293,6 +314,12 @@ export function createSession(
 
         case 'done':
           clearTimeout(skeletonTimer);
+          console.info(
+            '[PromptAmp] done',
+            message.result.declined
+              ? 'declined'
+              : `${String(message.result.text.length)} chars via ${message.result.model}`,
+          );
           // Land on the exact final text — the smooth reveal may still be a
           // few characters behind the network when the stream ends.
           stream?.finish();
@@ -319,6 +346,11 @@ export function createSession(
 
         case 'error':
           clearTimeout(skeletonTimer);
+          console.warn(
+            '[PromptAmp] error',
+            message.error.kind,
+            message.error.message,
+          );
           stream?.cancel();
           stream = null;
           handleError(message.error);
@@ -394,14 +426,21 @@ export function createSession(
       children: [el('span', { text: t('undo.replaced') }), undo, announce],
     });
 
-    // Viewport coordinates: getBoundingClientRect already returns them, and
-    // the layer this sits in is fixed.
+    // Above the field, never below: what sits under a chat composer is the
+    // site's own send row and status bars, and a pill parked on top of those
+    // reads as broken. Viewport coordinates — the layer is fixed. Height is
+    // unknown before layout, so estimate, then correct after append.
     const box = deps.field.getBoundingClientRect();
-    pill.style.transform = `translate3d(${String(box.left)}px, ${String(
-      box.bottom + 8,
+    const left = Math.max(8, box.left);
+    pill.style.transform = `translate3d(${String(left)}px, ${String(
+      Math.max(8, box.top - 44),
     )}px, 0)`;
 
     deps.layer.append(pill);
+    const pillBox = pill.getBoundingClientRect();
+    pill.style.transform = `translate3d(${String(left)}px, ${String(
+      Math.max(8, box.top - pillBox.height - 8),
+    )}px, 0)`;
 
     const dismiss = (): void => {
       clearTimeout(timer);

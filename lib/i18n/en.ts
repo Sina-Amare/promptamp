@@ -92,6 +92,7 @@ export const en = {
     "This site's editor doesn't allow direct insertion — copy instead.",
   'error.copiedInstead':
     "This site's editor doesn't allow direct insertion — copied instead.",
+  'error.reloaded': 'PromptAmp was updated. Refresh this page to use it.',
 
   /* ── popup ────────────────────────────────────────────────────── */
   'popup.setup': 'Add an API key to get started',

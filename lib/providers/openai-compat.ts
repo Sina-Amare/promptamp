@@ -88,6 +88,16 @@ export const openaiCompatAdapter = async (
     [config.maxTokensField]: maxTokens,
   };
 
+  // Diagnostic: shows the outgoing shape (never the key) so a stuck provider is
+  // debuggable from the service-worker console — e.g. whether reasoning_effort
+  // is actually being sent to Gemini.
+  console.info('[PromptAmp] →', config.id, {
+    model: body.model,
+    stream: body.stream,
+    reasoning_effort: body.reasoning_effort,
+    [config.maxTokensField]: maxTokens,
+  });
+
   const response = await fetchWithRetry(
     endpointFor(config, cred),
     {
@@ -98,6 +108,13 @@ export const openaiCompatAdapter = async (
     },
     config,
     maxRetries,
+  );
+
+  console.info(
+    '[PromptAmp] ←',
+    config.id,
+    response.status,
+    response.ok ? 'ok' : 'FAILED',
   );
 
   req.onHeaders?.(response.headers);

@@ -78,13 +78,19 @@ export function cornerPosition(
 
   switch (corner) {
     case 'outside-end': {
-      // In the margin just past the field's end border, vertically centred —
-      // never over the field's own content. "end" follows the field's
+      // In the margin just past the field's end border — never over the
+      // field's own content. Vertically: centred on a single-line field, but
+      // bottom-aligned on a tall composer — a disc floating at the mid-height
+      // of a five-line box looks detached, while the bottom line is where the
+      // send button and the user's eye already are. "end" follows the field's
       // direction, so an RTL composer places it to the left.
-      const centred = field.top + field.height / 2 - size / 2;
+      const tall = field.height > size * 2.5;
+      const vert = tall
+        ? field.top + field.height - size - inset
+        : field.top + field.height / 2 - size / 2;
       const outerRight = field.left + field.width + OUTSIDE_GAP;
       const outerLeft = field.left - OUTSIDE_GAP - size;
-      return at(centred, endIsRight ? outerRight : outerLeft);
+      return at(vert, endIsRight ? outerRight : outerLeft);
     }
     case 'bottom-end':
       return at(bottom, endIsRight ? right : left);

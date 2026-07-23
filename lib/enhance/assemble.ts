@@ -79,7 +79,7 @@ export function languageDirective(language: string | undefined): string {
   return `
 
 OUTPUT LANGUAGE — this section overrides the LANGUAGE section above.
-Write the entire rewrite in ${name}, whatever language the draft is written in, translating its meaning faithfully. Everything you add is in ${name} too; never mix another language into it. Unchanged regardless: code, error messages, file paths, identifiers, URLs, quoted strings, text meant to appear inside an image or on screen, and user-typed parameters — those stay exactly as the draft wrote them.`;
+Write the entire rewrite in ${name}, whatever language the draft is written in. Translate the *meaning*, never word by word: first understand what the user is actually asking — resolving typos, informal spellings, and words with several senses from the draft's own context — then express that intent naturally in ${name}. A domain word must keep its domain sense (a draft about test design that says "keeping the trap easy" means preserving/maintaining it, not memorising it). Everything you add is in ${name} too; never mix another language into it. Unchanged regardless: code, error messages, file paths, identifiers, URLs, quoted strings, text meant to appear inside an image or on screen, and user-typed parameters — those stay exactly as the draft wrote them.`;
 }
 
 /**

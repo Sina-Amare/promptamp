@@ -24,7 +24,7 @@ export default defineContentScript({
   // composer, and skipping them would miss Gmail and most embedded editors.
   allFrames: true,
 
-  async main() {
+  async main(ctx) {
     // Suppression is resolved *before* anything is added to the DOM. A hidden
     // site must be hidden with certainty, not hidden-then-removed: a broken
     // off switch is the fastest way to lose a user's trust.
@@ -195,6 +195,18 @@ export default defineContentScript({
     );
 
     tracker.start();
+
+    // When the extension is reloaded or updated, tabs opened beforehand keep
+    // running this now-orphaned script. Its observers would linger and its next
+    // call into the dead runtime would throw "Extension context invalidated" in
+    // the page console. Tear down instead: remove the surface, stop watching.
+    ctx.onInvalidated(() => {
+      try {
+        teardown();
+      } catch {
+        // The runtime is already gone — there is nothing left to clean up.
+      }
+    });
 
     /**
      * Alt+E and the context menu both arrive here from the worker, which has no

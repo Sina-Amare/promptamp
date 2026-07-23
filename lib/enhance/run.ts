@@ -159,6 +159,13 @@ export async function runEnhancement(
               ),
             )
           : toSafeError(err);
+        console.warn(
+          '[PromptAmp] ✗',
+          connection.label,
+          connection.model,
+          timedOut ? 'TIMEOUT' : safe.kind,
+          safe.message,
+        );
         attempts.push({
           connectionId: connection.id,
           label: connection.label,

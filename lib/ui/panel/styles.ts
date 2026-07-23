@@ -84,10 +84,11 @@ export const PANEL_CSS = `
 
 /* While loading and streaming the panel holds a steady reading height, so the
    words scroll inside a still frame instead of the panel growing line by line
-   (which re-triggers the anchored position update and reads as stutter). It is
-   released the instant a result lands, so the final panel fits its text. */
+   (which re-triggers the anchored position update and reads as stutter). Kept
+   compact — a tall waiting frame towers over the composer and reads as broken —
+   and released the instant a result lands, so the final panel fits its text. */
 .pa-panel[data-streaming='true'] {
-  block-size: min(50vh, 340px);
+  block-size: min(38vh, 240px);
 }
 
 /* ── header ────────────────────────────────────────────────────── */

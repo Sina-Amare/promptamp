@@ -109,6 +109,11 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
   let showDiff = false;
   let showOriginal = false;
   let destroyed = false;
+  // Streaming render state: one Text node appended to incrementally, and a
+  // throttle stamp for the auto-scroll (a per-frame scrollHeight read forces a
+  // reflow every frame — the stutter on heavy host pages).
+  let streamNode: Text | null = null;
+  let lastAutoScroll = 0;
 
   // State the header chips + their menus read from.
   let profileOptions: ProfileOption[] = [];
@@ -741,20 +746,31 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
       element.setAttribute('data-streaming', 'true');
       // Height was already reserved by the skeleton, so replacing it with text
       // causes no layout shift — the words simply appear where the shimmer was.
+      streamNode = document.createTextNode('');
+      lastAutoScroll = 0;
       bodyWrap.replaceChildren(body);
-      body.replaceChildren();
+      body.replaceChildren(streamNode);
       body.setAttribute('contenteditable', 'false');
       status.textContent = t('panel.busy');
     },
 
     streamText: (partial) => {
-      // textContent, not append: the smooth renderer hands over the whole
-      // string each frame, which keeps the DOM to a single text node.
-      body.textContent = partial;
-      // Keep the newest line in view. The panel holds a reserved height while
-      // streaming (see data-streaming), so it never grows and re-fires the
-      // position loop line by line — the words scroll inside a still frame.
-      bodyWrap.scrollTop = bodyWrap.scrollHeight;
+      // Append-only into one Text node. Replacing the whole text every frame
+      // and reading scrollHeight per frame forces a full layout + reflow 60×
+      // a second — on heavy host pages (ChatGPT, Claude) that is visible
+      // stutter. appendData is incremental, and the scroll write is throttled.
+      if (!streamNode) return;
+      const have = streamNode.data.length;
+      if (partial.length >= have && partial.startsWith(streamNode.data)) {
+        streamNode.appendData(partial.slice(have));
+      } else {
+        streamNode.data = partial; // reset (fallback started over)
+      }
+      const now = performance.now();
+      if (now - lastAutoScroll > 150) {
+        lastAutoScroll = now;
+        bodyWrap.scrollTop = bodyWrap.scrollHeight;
+      }
     },
 
     showResult: (text, source) => {
