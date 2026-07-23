@@ -100,9 +100,54 @@ export function parseModels(data: RawModel[]): ModelInfo[] {
  * what the key can actually reach rather than a table we would keep current by
  * hand.
  */
+/**
+ * Gemini's OpenAI-compatible surface has no `/models` endpoint — it 404s — so
+ * its native `{ models: [{ name, supportedGenerationMethods }] }` shape is
+ * parsed instead. Keep only models that can answer a chat, and strip the
+ * "models/" prefix the OpenAI-compat chat path does not want. Pure, so the
+ * filter and prefix strip are unit-tested without a network.
+ */
+export function parseGeminiModels(body: {
+  models?: { name?: string; supportedGenerationMethods?: string[] }[];
+}): ModelInfo[] {
+  const raw: RawModel[] = (body.models ?? [])
+    .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+    .map((m) => ({ id: (m.name ?? '').replace(/^models\//, '') }))
+    .filter((m) => m.id.length > 0);
+  return parseModels(raw);
+}
+
+async function listGeminiModels(
+  apiKey: string | undefined,
+): Promise<ModelInfo[]> {
+  if (!apiKey) return [];
+  let response: Response;
+  try {
+    response = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000',
+      {
+        headers: { 'x-goog-api-key': apiKey },
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+  } catch {
+    return [];
+  }
+  if (!response.ok) return [];
+  return parseGeminiModels(
+    (await response.json()) as Parameters<typeof parseGeminiModels>[0],
+  );
+}
+
 export async function listModels(connectionId: string): Promise<ModelInfo[]> {
   const connection = await getConnection(connectionId);
   if (!connection) return [];
+
+  // Gemini's OpenAI-compat surface has no models endpoint; use the native one.
+  if (connection.providerId === 'gemini') {
+    return listGeminiModels(connection.apiKey);
+  }
+
   const config = getProvider(connection.providerId);
   if (!config.modelsPath) return [];
 

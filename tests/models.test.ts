@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { parseModels, type RawModel } from '../lib/providers';
+import {
+  parseGeminiModels,
+  parseModels,
+  type RawModel,
+} from '../lib/providers';
 
 /**
  * The model list is filtered to text models (it is a prompt editor) and split
@@ -66,5 +70,41 @@ describe('parseModels', () => {
   it('sorts by id and ignores entries without a string id', () => {
     const raw: RawModel[] = [{ id: 'zeta' }, { id: 42 }, { id: 'alpha' }];
     expect(parseModels(raw).map((m) => m.id)).toEqual(['alpha', 'zeta']);
+  });
+});
+
+describe('parseGeminiModels', () => {
+  it('keeps chat models, strips the models/ prefix, drops the rest', () => {
+    // Gemini's native shape: only generateContent models are chat models;
+    // embeddings, imagen, and veo are not, and are filtered out.
+    const body = {
+      models: [
+        {
+          name: 'models/gemini-2.0-flash',
+          supportedGenerationMethods: ['generateContent', 'countTokens'],
+        },
+        {
+          name: 'models/text-embedding-004',
+          supportedGenerationMethods: ['embedContent'],
+        },
+        {
+          name: 'models/imagen-3.0-generate-002',
+          supportedGenerationMethods: ['predict'],
+        },
+        {
+          name: 'models/gemini-1.5-pro',
+          supportedGenerationMethods: ['generateContent'],
+        },
+      ],
+    };
+    expect(parseGeminiModels(body).map((m) => m.id)).toEqual([
+      'gemini-1.5-pro',
+      'gemini-2.0-flash',
+    ]);
+  });
+
+  it('is empty for a missing or empty list', () => {
+    expect(parseGeminiModels({})).toEqual([]);
+    expect(parseGeminiModels({ models: [] })).toEqual([]);
   });
 });

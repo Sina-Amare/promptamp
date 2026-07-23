@@ -115,7 +115,8 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
     chatPath: '/v1beta/openai/chat/completions',
     authStyle: 'bearer',
     defaultModel: 'gemini-2.0-flash',
-    modelsPath: '/v1beta/openai/models',
+    // No modelsPath: the OpenAI-compat surface has no /models endpoint (it
+    // 404s), so listModels() reads Gemini's native /v1beta/models instead.
     maxTokensField: 'max_tokens',
     requiresKey: true,
     allowsCustomBaseUrl: false,
