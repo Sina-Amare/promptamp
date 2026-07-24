@@ -4,13 +4,12 @@ import { svg } from '../host';
  * The enhance mark — a large AI sparkle with a smaller companion, the widely
  * understood "improve this with AI" glyph. Kept over the wand experiment by
  * user verdict: at 15px the sparkle reads cleaner. A monochrome version of the
- * store/logo mark (`assets/icon.svg`), so the floating button, the toolbar
- * icon and the brand read as one system.
+ * store/logo mark (`assets/icon.svg`), so the composer control, toolbar icon,
+ * and brand read as one system.
  *
- * Single-colour on `currentColor` because it sits on the solid disc and has to
- * recolour with the button's state (white on the emerald idle disc, danger on
- * error, dark on the amber done flash). A logo-class mark, never mirrored in
- * RTL.
+ * Single-colour on `currentColor` so it can move from emerald on the quiet
+ * idle surface to white during hover/loading, danger on error, and dark ink on
+ * the amber done flash. A logo-class mark, never mirrored in RTL.
  */
 export function promptMark(): SVGElement {
   return svg(

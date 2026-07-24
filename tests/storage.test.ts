@@ -358,6 +358,7 @@ describe('redactKeys', () => {
     ['gsk_abcdefghijklmnopqrstuv', 'gsk_'],
     ['sk-or-v1-abcdefghijklmnopqrst', 'sk-or-v1-'],
     ['AIzaSyAbcdefghijklmnopqrstuv', 'AIza'],
+    ['nvapi-abcdefghijklmnopqrstuv', 'nvapi-'],
   ])('redacts %s but keeps the prefix', (key, prefix) => {
     const out = redactKeys(`request failed with key ${key}`);
     expect(out).toContain(`${prefix}[redacted]`);

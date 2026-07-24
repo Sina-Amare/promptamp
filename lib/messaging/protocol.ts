@@ -96,13 +96,6 @@ export type Request =
   | { type: 'history:clear' }
   | { type: 'session:hideOrigin'; origin: string }
   | { type: 'session:isOriginHidden'; origin: string }
-  /**
-   * Insertion tier 4. Monaco and CodeMirror keep their text in a model no DOM
-   * event reaches, so it has to be written by calling the editor's own API
-   * from the page's JavaScript world — which only the worker can reach, via
-   * `scripting.executeScript({ world: 'MAIN' })`.
-   */
-  | { type: 'insert:mainWorld'; text: string }
   /* ---- options page ---- */
   /** Metadata only — never returns key material. */
   | { type: 'connections:list' }
@@ -197,7 +190,6 @@ export interface ResponseMap {
   'history:clear': void;
   'session:hideOrigin': void;
   'session:isOriginHidden': boolean;
-  'insert:mainWorld': boolean;
   'connections:list': ConfiguredConnection[];
   'connection:save': ConfiguredConnection[];
   'connection:delete': ConfiguredConnection[];

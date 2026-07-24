@@ -5,7 +5,7 @@ import { expect, test, useMockProvider } from './fixtures';
  * Placement, proven against faithful replicas of the real chat UIs the button
  * kept missing (Claude / ChatGPT / Grok shells — see playground/index.html).
  *
- * These are geometric assertions, not vibes: the disc must sit inside the
+ * These are geometric assertions, not vibes: the affordance must sit inside the
  * visible composer shell, off the user's text, off every control, and stay
  * glued through page scroll and through the upward growth of a long draft.
  */
@@ -43,8 +43,9 @@ async function boxOf(locator: Locator): Promise<Box> {
   return box;
 }
 
-/** The disc (the 28px visual, not the transparent hit area). */
+/** The visible affordance, distinct from its transparent 40px hit area. */
 const disc = (page: Page) => page.locator('.pa-button');
+const hitbox = (page: Page) => page.locator('.pa-button-wrap');
 
 async function fillEditable(
   page: Page,
@@ -70,7 +71,34 @@ async function fillEditable(
  * with the editable's own box first: only painted words count. */
 async function textRects(page: Page, testId: string): Promise<Box[]> {
   return page.getByTestId(testId).evaluate((el) => {
-    const clip = el.getBoundingClientRect();
+    let clip = el.getBoundingClientRect();
+    let ancestor = el.parentElement;
+    while (ancestor) {
+      const style = getComputedStyle(ancestor);
+      if (
+        /(auto|scroll|hidden|clip)/.test(
+          `${style.overflow}${style.overflowX}${style.overflowY}`,
+        )
+      ) {
+        const rect = ancestor.getBoundingClientRect();
+        const left = Math.max(clip.left, rect.left);
+        const top = Math.max(clip.top, rect.top);
+        const right = Math.min(clip.right, rect.right);
+        const bottom = Math.min(clip.bottom, rect.bottom);
+        clip = {
+          ...clip,
+          left,
+          top,
+          right,
+          bottom,
+          x: left,
+          y: top,
+          width: Math.max(0, right - left),
+          height: Math.max(0, bottom - top),
+        };
+      }
+      ancestor = ancestor.parentElement;
+    }
     const range = document.createRange();
     range.selectNodeContents(el);
     const out: { x: number; y: number; width: number; height: number }[] = [];
@@ -92,15 +120,15 @@ async function assertPlacement(
   shellId: string,
   editableId: string,
 ): Promise<void> {
-  const discBox = await boxOf(disc(page));
+  const discBox = await boxOf(hitbox(page));
   const shellBox = await boxOf(page.getByTestId(shellId));
 
-  // 1. In the box — never outside the visible composer.
-  expect(within(discBox, shellBox), 'disc inside the shell').toBe(true);
+  // 1. The complete 40px target is in the box — not only the visible disc.
+  expect(within(discBox, shellBox), 'hit target inside the shell').toBe(true);
 
   // 2. Never on the user's words.
   for (const rect of await textRects(page, editableId)) {
-    expect(intersects(discBox, rect), 'disc over text').toBe(false);
+    expect(intersects(discBox, rect), 'hit target over text').toBe(false);
   }
 
   // 3. Never on a control.
@@ -108,9 +136,10 @@ async function assertPlacement(
     .getByTestId(shellId)
     .locator('button')
     .all()) {
-    expect(intersects(discBox, await boxOf(control)), 'disc over control').toBe(
-      false,
-    );
+    expect(
+      intersects(discBox, await boxOf(control)),
+      'hit target over control',
+    ).toBe(false);
   }
 }
 
@@ -130,8 +159,24 @@ test.beforeEach(async ({ worker }) => {
   await useMockProvider(worker);
 });
 
-const SHOT_DIR =
-  'C:/Users/sinaa/AppData/Local/Temp/claude/c--Users-sinaa-Desktop-Personal-Projects-PromptAmp/982636b5-9cc8-43c7-b36d-747f94cb5464/scratchpad/shots';
+test('an empty tall composer uses its quiet top corner', async ({ page }) => {
+  await page.goto('http://localhost:5174/');
+  await page.getByTestId('claude-editable').click();
+  const wrap = hitbox(page);
+  await expect(wrap).toBeVisible();
+  await page.waitForTimeout(200);
+
+  const target = await boxOf(wrap);
+  const shell = await boxOf(page.getByTestId('claude-shell'));
+  expect(within(target, shell), 'target leaves empty composer').toBe(true);
+  expect(Math.abs(target.y - (shell.y + 8))).toBeLessThanOrEqual(TOLERANCE);
+  for (const control of await page
+    .getByTestId('claude-shell')
+    .locator('button')
+    .all()) {
+    expect(intersects(target, await boxOf(control))).toBe(false);
+  }
+});
 
 test('Claude-style shell: long RTL draft, disc in the row, glued on scroll', async ({
   page,
@@ -159,10 +204,6 @@ test('Claude-style shell: long RTL draft, disc in the row, glued on scroll', asy
     Math.abs(after.x - shellAfter.x - (before.x - shellBefore.x)),
   ).toBeLessThanOrEqual(TOLERANCE);
   await assertPlacement(page, 'claude-shell', 'claude-editable');
-
-  await page
-    .getByTestId('claude-shell')
-    .screenshot({ path: `${SHOT_DIR}/claude-rtl.png` });
 });
 
 test('Claude-style shell: disc stays put while the draft grows upward', async ({
@@ -201,15 +242,39 @@ test('ChatGPT-style shell: internal scroll on a long draft, disc in the row', as
   await expect(disc(page)).toBeVisible();
   await page.waitForTimeout(300);
 
+  const fieldBox = await boxOf(page.getByTestId('gpt-editable'));
+  const shellBefore = await boxOf(page.getByTestId('gpt-shell'));
+  expect(fieldBox.y + fieldBox.height).toBeGreaterThan(
+    shellBefore.y + shellBefore.height + 40,
+  );
   await assertPlacement(page, 'gpt-shell', 'gpt-editable');
+
+  const before = await boxOf(hitbox(page));
   await page
     .getByTestId('gpt-shell')
-    .screenshot({ path: `${SHOT_DIR}/gpt-long.png` });
+    .locator('.gpt-text-viewport')
+    .evaluate((viewport) => {
+      viewport.scrollTop = 160;
+      viewport.dispatchEvent(new Event('scroll'));
+    });
+  await page.waitForTimeout(250);
+  const after = await boxOf(hitbox(page));
+  const shellAfter = await boxOf(page.getByTestId('gpt-shell'));
+  expect(
+    Math.abs(after.y - shellAfter.y - (before.y - shellBefore.y)),
+  ).toBeLessThanOrEqual(TOLERANCE);
+  expect(
+    Math.abs(after.x - shellAfter.x - (before.x - shellBefore.x)),
+  ).toBeLessThanOrEqual(TOLERANCE);
+  await assertPlacement(page, 'gpt-shell', 'gpt-editable');
 });
 
 test('ChatGPT-style shell: the panel clears the composer on a long draft', async ({
   page,
 }) => {
+  // This test asserts a complete gap, so give the tall regression composer
+  // enough room for the full panel on one side.
+  await page.setViewportSize({ width: 1_280, height: 900 });
   await page.goto('http://localhost:5174/');
   await fillEditable(page, 'gpt-editable', LONG_LTR, false);
   await page.getByTestId('gpt-editable').click();
@@ -231,8 +296,6 @@ test('ChatGPT-style shell: the panel clears the composer on a long draft', async
   const viewport = page.viewportSize()!;
   expect(panelBox.y).toBeGreaterThanOrEqual(0);
   expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(viewport.height);
-
-  await page.screenshot({ path: `${SHOT_DIR}/gpt-panel.png` });
 });
 
 test('Grok-style pill: disc beside the cluster, never over the edge', async ({
@@ -245,18 +308,16 @@ test('Grok-style pill: disc beside the cluster, never over the edge', async ({
   await page.waitForTimeout(250);
 
   const discBox = await boxOf(disc(page));
+  const targetBox = await boxOf(hitbox(page));
   const shellBox = await boxOf(page.getByTestId('grok-shell'));
   expect(within(discBox, shellBox), 'disc inside the pill').toBe(true);
+  expect(within(targetBox, shellBox), 'hit target inside the pill').toBe(true);
   for (const control of await page
     .getByTestId('grok-shell')
     .locator('button')
     .all()) {
-    expect(intersects(discBox, await boxOf(control))).toBe(false);
+    expect(intersects(targetBox, await boxOf(control))).toBe(false);
   }
-
-  await page
-    .getByTestId('grok-shell')
-    .screenshot({ path: `${SHOT_DIR}/grok-pill.png` });
 });
 
 test('Gemini-style pill: a 24px-tall line still gets the disc, well placed', async ({
@@ -271,16 +332,268 @@ test('Gemini-style pill: a 24px-tall line still gets the disc, well placed', asy
   await page.waitForTimeout(250);
 
   const discBox = await boxOf(disc(page));
+  const targetBox = await boxOf(hitbox(page));
   const shellBox = await boxOf(page.getByTestId('gemini-shell'));
   expect(within(discBox, shellBox), 'disc inside the pill').toBe(true);
+  expect(within(targetBox, shellBox), 'hit target inside the pill').toBe(true);
   for (const control of await page
     .getByTestId('gemini-shell')
     .locator('button')
     .all()) {
-    expect(intersects(discBox, await boxOf(control))).toBe(false);
+    expect(intersects(targetBox, await boxOf(control))).toBe(false);
+  }
+});
+
+test('Gemini hydration: adopts the replaced editor and vacates a late Pro control', async ({
+  page,
+}) => {
+  await page.goto('http://localhost:5174/');
+  await fillEditable(page, 'gemini-editable', 'Plan a focused launch brief.');
+  await expect(hitbox(page)).toBeVisible();
+  await page.waitForTimeout(200);
+  const initial = await boxOf(hitbox(page));
+
+  // Turn the current automatic slot into a real persisted manual pin. The live
+  // failure only occurred on this path: automatic placement moved safely, but
+  // a saved pin was allowed to ignore the late Pro control.
+  await page.mouse.move(initial.x + 20, initial.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(initial.x + 32, initial.y + 20);
+  await page.mouse.move(initial.x + 20, initial.y + 20);
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const occupied = await boxOf(hitbox(page));
+  expect(Math.abs(occupied.x - initial.x)).toBeLessThanOrEqual(TOLERANCE);
+  expect(Math.abs(occupied.y - initial.y)).toBeLessThanOrEqual(TOLERANCE);
+
+  // Faithful to Gemini's hydration race: replace the rich-textarea host first,
+  // then populate its shadow tree in a later task without restoring focus.
+  await page.getByTestId('gemini-shell').evaluate((shell) => {
+    const oldHost = shell.querySelector<HTMLElement>(
+      '[data-testid="gemini-host"]',
+    )!;
+    const replacement = document.createElement('rich-textarea');
+    replacement.className = oldHost.className;
+    replacement.dataset.testid = 'gemini-host';
+    oldHost.replaceWith(replacement);
+  });
+  await page.waitForTimeout(150);
+  await page.getByTestId('gemini-host').evaluate((host) => {
+    const shadow = host.attachShadow({ mode: 'open' });
+    const editor = document.createElement('div');
+    editor.className = 'ql-editor textarea gemini-line';
+    editor.dataset.testid = 'gemini-editable';
+    editor.contentEditable = 'true';
+    editor.setAttribute('role', 'textbox');
+    editor.setAttribute('aria-labelledby', 'gemini-label');
+    editor.style.cssText =
+      'display:block;width:100%;height:24px;line-height:24px;outline:none;white-space:nowrap;overflow:hidden;font:inherit;color:inherit;';
+    editor.textContent = 'Plan a focused launch brief.';
+    shadow.append(editor);
+  });
+  await page.waitForTimeout(150);
+
+  // The Pro picker arrives in the light DOM after the shadow editor has been
+  // adopted, directly over the slot that was free during the first render.
+  await page.getByTestId('gemini-shell').evaluate((shell, oldSlot) => {
+    const pro = document.createElement('bard-mode-switcher');
+    pro.className = 'chat-model';
+    pro.dataset.testid = 'gemini-pro';
+    pro.setAttribute('jsaction', 'click:selectMode');
+    pro.textContent = 'Pro ▾';
+    Object.assign(pro.style, {
+      position: 'fixed',
+      zIndex: '2',
+      cursor: 'pointer',
+      left: `${String(oldSlot.x)}px`,
+      top: `${String(oldSlot.y)}px`,
+      width: `${String(Math.max(64, oldSlot.width))}px`,
+      height: `${String(oldSlot.height)}px`,
+    });
+    shell.insertBefore(pro, shell.querySelector('[data-testid="gemini-mic"]'));
+  }, occupied);
+
+  await expect(page.getByTestId('gemini-editable')).toBeVisible();
+  await expect(hitbox(page)).toBeVisible();
+  await expect(hitbox(page)).toHaveCount(1);
+  await page.waitForTimeout(250);
+
+  const current = await boxOf(hitbox(page));
+  const pro = await boxOf(page.getByTestId('gemini-pro'));
+  expect(intersects(current, pro), 'PromptAmp remains under late Pro').toBe(
+    false,
+  );
+  expect(
+    Math.hypot(current.x - occupied.x, current.y - occupied.y),
+    'PromptAmp did not vacate the occupied slot',
+  ).toBeGreaterThan(TOLERANCE);
+});
+
+test('outside fallback is a composer-attached tab, not a floating disc', async ({
+  page,
+}) => {
+  await page.goto('http://localhost:5174/');
+  const field = page.getByTestId('plain-textarea');
+  await field.fill(
+    'A filled bare textarea has no safe internal action row for an overlay.',
+  );
+  await field.click();
+  const wrap = hitbox(page);
+  await expect(wrap).toBeVisible();
+  await expect(wrap).toHaveAttribute('data-placement', 'outside');
+  const side = await wrap.getAttribute('data-side');
+  expect(side).toMatch(/^(right|left|above|below)$/);
+
+  const fieldBox = await boxOf(field);
+  const wrapBox = await boxOf(wrap);
+  const visualBox = await boxOf(disc(page));
+  if (side === 'right') {
+    expect(
+      Math.abs(wrapBox.x - (fieldBox.x + fieldBox.width)),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(visualBox.x - (fieldBox.x + fieldBox.width)),
+    ).toBeLessThanOrEqual(1);
+  } else if (side === 'left') {
+    expect(
+      Math.abs(wrapBox.x + wrapBox.width - fieldBox.x),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(visualBox.x + visualBox.width - fieldBox.x),
+    ).toBeLessThanOrEqual(1);
+  } else if (side === 'above') {
+    expect(
+      Math.abs(wrapBox.y + wrapBox.height - fieldBox.y),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(visualBox.y + visualBox.height - fieldBox.y),
+    ).toBeLessThanOrEqual(1);
+  } else {
+    expect(
+      Math.abs(wrapBox.y - (fieldBox.y + fieldBox.height)),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(visualBox.y - (fieldBox.y + fieldBox.height)),
+    ).toBeLessThanOrEqual(1);
   }
 
-  await page
-    .getByTestId('gemini-shell')
-    .screenshot({ path: `${SHOT_DIR}/gemini-pill.png` });
+  const radii = await disc(page).evaluate((button) => {
+    const style = getComputedStyle(button);
+    return [
+      style.borderTopLeftRadius,
+      style.borderTopRightRadius,
+      style.borderBottomRightRadius,
+      style.borderBottomLeftRadius,
+    ];
+  });
+  expect(radii).toContain('0px');
+});
+
+test('the dismiss menu flips above the viewport edge and has Cancel', async ({
+  page,
+}) => {
+  await page.goto('http://localhost:5174/');
+  const field = page.getByTestId('plain-textarea');
+  await field.evaluate((element) => {
+    Object.assign(element.style, {
+      position: 'fixed',
+      right: '80px',
+      bottom: '8px',
+      width: '520px',
+      height: '120px',
+      zIndex: '10',
+    });
+  });
+  await field.fill('Keep every dismissal choice visible near the screen edge.');
+  await field.click();
+
+  const wrap = hitbox(page);
+  await expect(wrap).toBeVisible();
+  await wrap.hover();
+  await page.locator('.pa-dismiss').click();
+  const menu = page.locator('.pa-menu');
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitem', { name: 'Cancel' })).toBeVisible();
+
+  const menuBox = await boxOf(menu);
+  const viewport = page.viewportSize()!;
+  expect(menuBox.y).toBeGreaterThanOrEqual(8);
+  expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(viewport.height - 8);
+  await menu.getByRole('menuitem', { name: 'Cancel' }).click();
+  await expect(menu).toHaveCount(0);
+  await expect(wrap).toBeVisible();
+});
+
+test('a dragged pin stays where dropped, survives reload, clamps on resize, and can be reset', async ({
+  page,
+}) => {
+  await page.goto('http://localhost:5174/');
+  await fillEditable(page, 'grok-editable', 'Plan a concise product launch.');
+  await page.getByTestId('grok-editable').click();
+  const wrap = page.locator('.pa-button-wrap');
+  await expect(wrap).toBeVisible();
+  const start = await boxOf(wrap);
+  const intended = {
+    x: start.x - 120,
+    y: start.y - 120,
+  };
+
+  await page.mouse.move(start.x + 20, start.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(intended.x + 20, intended.y + 20, { steps: 8 });
+  // Cross the tracker's one-second safety poll while the pointer is still
+  // down. Layout tracking must not snap an active drag back to its old slot.
+  await page.waitForTimeout(1_150);
+  const duringDrag = await boxOf(wrap);
+  expect(Math.abs(duringDrag.x - intended.x)).toBeLessThanOrEqual(TOLERANCE);
+  expect(Math.abs(duringDrag.y - intended.y)).toBeLessThanOrEqual(TOLERANCE);
+  await page.mouse.up();
+  await page.waitForTimeout(200);
+
+  const dragged = await boxOf(wrap);
+  expect(
+    Math.abs(dragged.x - intended.x),
+    `settled slot: ${String(await wrap.getAttribute('data-slot'))}`,
+  ).toBeLessThanOrEqual(TOLERANCE);
+  expect(Math.abs(dragged.y - intended.y)).toBeLessThanOrEqual(TOLERANCE);
+  const shellBeforeReload = await boxOf(page.getByTestId('grok-shell'));
+  const draggedOffset = {
+    x: dragged.x - shellBeforeReload.x,
+    y: dragged.y - shellBeforeReload.y,
+  };
+  await page.waitForTimeout(250);
+
+  await page.reload();
+  await fillEditable(page, 'grok-editable', 'Plan a concise product launch.');
+  await expect(wrap).toBeVisible();
+  await page.waitForTimeout(200);
+  const restored = await boxOf(wrap);
+  const restoredShell = await boxOf(page.getByTestId('grok-shell'));
+  expect(
+    Math.abs(restored.x - restoredShell.x - draggedOffset.x),
+  ).toBeLessThanOrEqual(TOLERANCE);
+  expect(
+    Math.abs(restored.y - restoredShell.y - draggedOffset.y),
+  ).toBeLessThanOrEqual(TOLERANCE);
+
+  await page.setViewportSize({ width: 760, height: 620 });
+  await page.waitForTimeout(250);
+  const resized = await boxOf(wrap);
+  expect(resized.x).toBeGreaterThanOrEqual(0);
+  expect(resized.y).toBeGreaterThanOrEqual(0);
+  expect(resized.x + resized.width).toBeLessThanOrEqual(760);
+  expect(resized.y + resized.height).toBeLessThanOrEqual(620);
+
+  await wrap.hover();
+  await page.locator('.pa-dismiss').click();
+  const reset = page.getByRole('menuitem', { name: 'Reset icon position' });
+  await expect(reset).toBeVisible();
+  await reset.click();
+
+  await wrap.hover();
+  await page.locator('.pa-dismiss').click();
+  await expect(
+    page.getByRole('menuitem', { name: 'Reset icon position' }),
+  ).toHaveCount(0);
+  await assertPlacement(page, 'grok-shell', 'grok-editable');
 });

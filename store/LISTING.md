@@ -115,8 +115,6 @@ run away with your credit.
 | --- | --- |
 | Single purpose | Rewriting a user's draft text into an improved prompt, in place, in any text field. |
 | `storage` justification | Stores the user's own API key, settings, and custom profiles locally on their device. |
-| `activeTab` justification | Reads the draft from the field the user focused, and writes the rewritten text back when the user accepts. |
-| `scripting` justification | Some editors (Monaco, CodeMirror) accept text only through their own JavaScript API, which requires executing a small insertion function in the page's main world. Used only on the user's explicit accept. |
 | `contextMenus` justification | Adds a single "Enhance this draft with PromptAmp" item on editable fields. |
 | `commands` justification | Provides the Alt+E keyboard shortcut for the same action as the button. |
 | `identity` justification | Optional OpenRouter sign-in via PKCE OAuth, so a user can connect without pasting a key. No password is ever seen by the extension. |
@@ -169,16 +167,17 @@ service of any kind.
 Build (Node 22, pnpm 9):
     pnpm install
     pnpm build:firefox
-Output: .output/firefox-mv2
+Output: .output/firefox-mv3
 
 The source zip contains no minified or generated code. Everything under lib/
 and entrypoints/ is the original TypeScript.
 
 Points a reviewer may want to check directly:
 
-1. No remote code. There is no eval, no new Function, and no script injection
-   from a URL. The one use of chrome.scripting.executeScript injects a function
-   defined in lib/insertion/main-world.ts, and only on an explicit user accept.
+1. No remote code. There is no eval, no new Function, no script loaded from a
+   URL, and no runtime script injection. A bundled static MAIN-world content
+   script exposes only bounded read/replace operations for the active Monaco or
+   CodeMirror model and returns exact readback.
 
 2. API keys never reach content scripts. lib/storage/credentials.ts is the only
    module that reads them, it runs in the background only, and eslint.config.js

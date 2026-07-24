@@ -108,6 +108,7 @@ export const openaiCompatAdapter = async (
     },
     config,
     maxRetries,
+    req.onRetryWait,
   );
 
   console.info(
@@ -118,10 +119,16 @@ export const openaiCompatAdapter = async (
   );
 
   req.onHeaders?.(response.headers);
+  req.onActivity?.();
 
-  if (streaming) return readSse(response, onChunk);
+  if (streaming) {
+    return readSse(response, onChunk, req.onActivity);
+  }
 
   const parsed = (await response.json()) as CompletionBody;
+  if (parsed.error) throw errorFromEmbeddedFrame(parsed.error);
+  const finishReason = parsed.choices?.[0]?.finish_reason;
+  assertCompleteFinish(finishReason);
   const raw = parsed.choices?.[0]?.message?.content;
   const text = typeof raw === 'string' ? raw : '';
 
@@ -152,6 +159,7 @@ export const openaiCompatAdapter = async (
 async function readSse(
   response: Response,
   onChunk: (delta: string) => void,
+  onActivity?: () => void,
 ): Promise<ChatResponse> {
   const body = response.body;
   if (!body) throw errorFor('network');
@@ -162,6 +170,7 @@ async function readSse(
   let text = '';
   let promptTokens: number | undefined;
   let completionTokens: number | undefined;
+  let finishReason: string | undefined;
 
   try {
     for (;;) {
@@ -174,35 +183,18 @@ async function readSse(
       buffer = lines.pop() ?? '';
 
       for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
-        const payload = trimmed.slice(5).trim();
-        if (payload === '' || payload === '[DONE]') continue;
-
-        let frame: StreamFrame;
-        try {
-          frame = JSON.parse(payload) as StreamFrame;
-        } catch {
-          continue;
-        }
-
-        const delta = frame.choices?.[0]?.delta?.content;
-        if (typeof delta === 'string' && delta !== '') {
-          text += delta;
-          onChunk(delta);
-        }
-        if (frame.usage) {
-          promptTokens = frame.usage.prompt_tokens ?? promptTokens;
-          completionTokens = frame.usage.completion_tokens ?? completionTokens;
-        }
+        processSseLine(line);
       }
     }
+    buffer += decoder.decode();
+    processSseLine(buffer);
   } finally {
     // Abort mid-stream leaves the reader open otherwise, which keeps the
     // connection — and on some providers the billing — alive.
     reader.cancel().catch(() => undefined);
   }
 
+  assertCompleteFinish(finishReason);
   if (!text.trim()) throw errorFor('refusal');
 
   return {
@@ -210,11 +202,99 @@ async function readSse(
     ...(promptTokens === undefined ? {} : { promptTokens }),
     ...(completionTokens === undefined ? {} : { completionTokens }),
   };
+
+  function processSseLine(line: string): void {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) return;
+    const payload = trimmed.slice(5).trim();
+    if (payload === '' || payload === '[DONE]') return;
+
+    let frame: StreamFrame;
+    try {
+      frame = JSON.parse(payload) as StreamFrame;
+    } catch {
+      return;
+    }
+    onActivity?.();
+    if (frame.error) throw errorFromEmbeddedFrame(frame.error);
+
+    const choice = frame.choices?.[0];
+    finishReason = choice?.finish_reason ?? finishReason;
+    const delta = choice?.delta?.content;
+    if (typeof delta === 'string' && delta !== '') {
+      text += delta;
+      onChunk(delta);
+    }
+    if (frame.usage) {
+      promptTokens = frame.usage.prompt_tokens ?? promptTokens;
+      completionTokens = frame.usage.completion_tokens ?? completionTokens;
+    }
+  }
 }
 
 interface StreamFrame {
-  choices?: { delta?: { content?: unknown } }[];
+  choices?: {
+    delta?: { content?: unknown };
+    finish_reason?: string | null;
+  }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
+  error?: unknown;
+}
+
+function assertCompleteFinish(reason: string | null | undefined): void {
+  if (reason === 'length' || reason === 'max_tokens') {
+    throw errorFor('too-long', 'The rewrite was cut off. Try a shorter draft.');
+  }
+  if (
+    reason === 'content_filter' ||
+    reason === 'content-filter' ||
+    reason === 'refusal'
+  ) {
+    throw errorFor('refusal');
+  }
+}
+
+/**
+ * Successful HTTP responses can still carry provider errors inside JSON/SSE.
+ * Classify those with the same actionable kinds as ordinary HTTP failures.
+ */
+export function errorFromEmbeddedFrame(value: unknown): ProviderError {
+  const record =
+    typeof value === 'object' && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
+  const message =
+    typeof value === 'string'
+      ? value
+      : typeof record.message === 'string'
+        ? record.message
+        : 'The provider returned an error while streaming.';
+  const code =
+    typeof record.type === 'string'
+      ? record.type
+      : typeof record.code === 'string'
+        ? record.code
+        : '';
+  const detail = `${code} ${message}`;
+  const status = typeof record.status === 'number' ? record.status : undefined;
+  let kind =
+    status === undefined ? mapStatus(0, detail) : mapStatus(status, detail);
+
+  if (/auth|api.?key|unauthor|forbidden/i.test(detail)) kind = 'bad-key';
+  else if (/quota|credit|billing|insufficient/i.test(detail)) kind = 'quota';
+  else if (/rate.?limit|too many requests/i.test(detail)) kind = 'rate-limited';
+  else if (
+    /model.+(?:not|invalid|unknown|unavailable)|invalid.+model/i.test(detail)
+  )
+    kind = 'bad-model';
+  else if (/context|too long|max(?:imum)?.*token/i.test(detail))
+    kind = 'too-long';
+  else if (/content.?filter|moderation|refusal|refused/i.test(detail))
+    kind = 'refusal';
+  else if (/overload|server|network|unavailable|timeout/i.test(detail))
+    kind = 'network';
+
+  return new ProviderError(kind, message);
 }
 
 /**
@@ -227,6 +307,7 @@ export async function fetchWithRetry(
   init: RequestInit,
   config: ProviderConfig,
   maxRetries: number = MAX_RETRIES,
+  onRetryWait?: (delayMs: number) => void,
 ): Promise<Response> {
   let lastError: ProviderError | null = null;
 
@@ -252,7 +333,9 @@ export async function fetchWithRetry(
     }
 
     lastError = new ProviderError(kind, 'Rate limited.', retryAfter);
-    await sleep(backoffMs(attempt, retryAfter), init.signal ?? null);
+    const delayMs = backoffMs(attempt, retryAfter);
+    onRetryWait?.(delayMs);
+    await sleep(delayMs, init.signal ?? null);
   }
 
   throw lastError ?? errorFor('unknown');

@@ -10,6 +10,7 @@ import {
   readValue,
   resolveDirection,
 } from '../lib/insertion/detect';
+import { mainWorldEditorOperation } from '../lib/insertion/main-world';
 import {
   countInvisibleMarks,
   matchesSnapshot,
@@ -63,12 +64,41 @@ describe('editor classification', () => {
     expect(classifyEditor(inner)).toBe('prosemirror');
   });
 
-  it('treats a plain text input as editable but never qualifies it', () => {
-    const input = withSize(mount<HTMLInputElement>('<input type="text">'));
+  it('resolves Monaco hidden textarea focus to the visible editor size', () => {
+    document.body.innerHTML =
+      '<div class="monaco-editor"><textarea id="monaco-input"></textarea></div>';
+    const root = withSize(
+      document.querySelector<HTMLElement>('.monaco-editor')!,
+      700,
+      220,
+    );
+    const input = withSize(
+      document.getElementById('monaco-input') as HTMLTextAreaElement,
+      1,
+      1,
+    );
+
+    expect(classifyEditor(input)).toBe('monaco');
+    expect(qualifies(input)).toBe(true);
+    expect(root.getBoundingClientRect().width).toBe(700);
+  });
+
+  it('qualifies only wide native text inputs used as prompt composers', () => {
+    const input = withSize(
+      mount<HTMLInputElement>('<input type="text">'),
+      640,
+      24,
+    );
     expect(isEditableInput(input)).toBe(true);
     expect(isEditable(input)).toBe(true);
-    // Single-line boxes are noise for a rewrite affordance (UX-SPEC §1.1).
-    expect(qualifies(input)).toBe(false);
+    expect(qualifies(input)).toBe(true);
+
+    const ordinary = withSize(
+      mount<HTMLInputElement>('<input type="text">'),
+      280,
+      40,
+    );
+    expect(qualifies(ordinary)).toBe(false);
   });
 
   it.each([
@@ -105,6 +135,7 @@ describe('qualification gates', () => {
     // Gemini's real composer: a 445x24 line inside a padded pill. The plain
     // 40px height floor silently rejected it — a wide single line qualifies.
     [445, 24],
+    [445, 16],
     [600, 39],
   ])('accepts a wide single-line composer (%ix%i)', (width, height) => {
     const el = withSize(mount('<textarea></textarea>'), width, height);
@@ -262,19 +293,104 @@ describe('verify-and-escalate', () => {
     expect(seen).toContain('enhanced');
   });
 
-  it('uses the main-world hook for code editors', async () => {
-    const mainWorldInsert = vi.fn().mockResolvedValue(true);
+  it('uses exact MAIN-world model readback for code editors', async () => {
+    const replace = vi.fn().mockResolvedValue({
+      ok: true,
+      kind: 'codemirror',
+      value: 'enhanced',
+    });
     const el = withSize(
       mount('<div class="cm-content" contenteditable="true"></div>'),
     );
 
     const outcome = await insertText(el, 'enhanced', {
-      mainWorldInsert,
-      verify: () => true,
+      mainWorldEditor: {
+        read: vi.fn().mockResolvedValue({
+          ok: true,
+          kind: 'codemirror',
+          value: 'original',
+        }),
+        replace,
+      },
     });
 
-    expect(mainWorldInsert).toHaveBeenCalledWith('enhanced');
+    expect(replace).toHaveBeenCalledWith('enhanced');
     expect(outcome.tier).toBe('main-world');
+  });
+
+  it('verifies and rolls a model editor back from exact bridge readback', async () => {
+    vi.stubGlobal('navigator', {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    });
+    const el = withSize(
+      mount('<div class="cm-content" contenteditable="true"></div>'),
+    );
+    const replace = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        kind: 'codemirror',
+        value: 'partial write',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        kind: 'codemirror',
+        value: 'original model',
+      });
+
+    const outcome = await insertText(el, 'enhanced', {
+      mainWorldEditor: {
+        read: vi.fn().mockResolvedValue({
+          ok: true,
+          kind: 'codemirror',
+          value: 'original model',
+        }),
+        replace,
+      },
+      verify: () => false,
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(replace).toHaveBeenLastCalledWith('original model');
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('MAIN-world editor operations', () => {
+  it('reads and replaces CodeMirror through EditorState', () => {
+    const host = mount<HTMLDivElement>(
+      '<div class="cm-editor"><div class="cm-content" contenteditable="true"></div></div>',
+    );
+    const content = host.querySelector<HTMLElement>('.cm-content')!;
+    let value = 'original';
+    Object.defineProperty(content, 'cmView', {
+      enumerable: true,
+      value: {
+        state: {
+          doc: {
+            get length() {
+              return value.length;
+            },
+            toString: () => value,
+          },
+        },
+        dispatch: (spec: { changes: { insert: string } }) => {
+          value = spec.changes.insert;
+        },
+      },
+    });
+    content.focus();
+
+    expect(mainWorldEditorOperation('read')).toMatchObject({
+      ok: true,
+      kind: 'codemirror',
+      value: 'original',
+    });
+    expect(mainWorldEditorOperation('replace', 'enhanced')).toMatchObject({
+      ok: true,
+      kind: 'codemirror',
+      value: 'enhanced',
+    });
   });
 });
 

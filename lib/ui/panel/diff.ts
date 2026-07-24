@@ -1,4 +1,4 @@
-import { diffWords } from 'diff';
+import { diffArrays } from 'diff';
 import { el } from '../host';
 
 /**
@@ -21,10 +21,34 @@ export interface DiffRun {
 }
 
 export function computeDiff(original: string, enhanced: string): DiffRun[] {
-  return diffWords(original, enhanced).map((part) => ({
+  return diffArrays(wordTokens(original), wordTokens(enhanced)).map((part) => ({
     kind: part.added ? 'added' : part.removed ? 'removed' : 'same',
-    value: part.value,
+    value: part.value.join(''),
   }));
+}
+
+/**
+ * Diff whole Unicode words and emoji graphemes.
+ *
+ * `diffWords` uses an ASCII-biased character fallback for scripts without
+ * spaces, which split Persian words (`کوتاه` → `ک` + `وتاه`) and ZWJ emoji.
+ * Segmenting first makes those boundaries an input invariant rather than a
+ * rendering repair after the diff has already broken them.
+ */
+function wordTokens(text: string): string[] {
+  if (typeof Intl.Segmenter === 'function') {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
+    return [...segmenter.segment(text)].map(({ segment }) => segment);
+  }
+
+  // Firefox versions before Intl.Segmenter: letters/marks stay together and a
+  // complete emoji ZWJ sequence stays one token. Punctuation/spacing remain
+  // byte-exact individual runs, so reconstruction is lossless.
+  return (
+    text.match(
+      /(?:\p{Extended_Pictographic}(?:\p{Emoji_Modifier}|\uFE0F)?(?:\u200D\p{Extended_Pictographic}(?:\p{Emoji_Modifier}|\uFE0F)?)*)|(?:[\p{Letter}\p{Number}\p{Mark}_]+)|(?:\s+)|./gu,
+    ) ?? []
+  );
 }
 
 /** Nothing survived unchanged in either direction. Drives "Already looks good". */

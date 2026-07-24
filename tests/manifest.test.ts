@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { browser } from '#imports';
 import config from '../wxt.config';
+import { isTrustedSender } from '../lib/messaging/protocol';
 
 /**
  * These are guards, not documentation. Principle 11 says the API host list stays
@@ -53,11 +55,9 @@ describe('manifest', () => {
   it('requests no permission beyond the documented set', () => {
     // Adding one here means updating the store listing's justification text.
     expect([...permissions].sort()).toEqual([
-      'activeTab',
       'commands',
       'contextMenus',
       'identity',
-      'scripting',
       'storage',
     ]);
   });
@@ -80,5 +80,13 @@ describe('manifest', () => {
   it('has no auto-imports enabled', () => {
     // Explicit imports are a reviewability guarantee, not a style preference.
     expect(config.imports).toBe(false);
+  });
+});
+
+describe('worker sender guard', () => {
+  it('accepts only the browser-authenticated extension id', () => {
+    expect(isTrustedSender({ id: browser.runtime.id })).toBe(true);
+    expect(isTrustedSender({ id: 'another-extension' })).toBe(false);
+    expect(isTrustedSender({ url: 'https://example.com' })).toBe(false);
   });
 });

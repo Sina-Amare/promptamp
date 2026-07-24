@@ -20,6 +20,7 @@ import {
   insertViaNativeSetter,
   insertViaPasteSimulation,
 } from './tiers';
+import type { MainWorldEditorResult } from './main-world';
 
 /**
  * Attempt → verify by read-back → escalate.
@@ -34,13 +35,14 @@ import {
 
 export interface InsertOptions {
   /**
-   * Tier 4. Monaco and CodeMirror 6 keep their text in an internal model that
-   * no DOM event reaches, so the only reliable path is calling their instance
-   * API from the page's own world — which a content script cannot do. The
-   * content script supplies this hook, which asks the worker to run
-   * `scripting.executeScript({ world: 'MAIN' })`.
+   * Tier 4. Monaco and CodeMirror keep their authoritative text in an internal
+   * model. The static MAIN-world bridge returns exact model state after both
+   * reads and writes, so verification and rollback are exact.
    */
-  mainWorldInsert?: (text: string) => Promise<boolean>;
+  mainWorldEditor?: {
+    read: () => Promise<MainWorldEditorResult>;
+    replace: (text: string) => Promise<MainWorldEditorResult>;
+  };
   /** Injected in tests. */
   verify?: (el: HTMLElement, expected: string) => boolean;
 }
@@ -89,6 +91,11 @@ export async function insertText(
   options: InsertOptions = {},
 ): Promise<InsertOutcome> {
   const kind = classifyEditor(el);
+  const modelEditor =
+    (kind === 'monaco' || kind === 'codemirror') && options.mainWorldEditor
+      ? options.mainWorldEditor
+      : null;
+  const originalModel = modelEditor ? await modelEditor.read() : null;
   // Taken before anything is attempted, so a partial write from a failed tier
   // can be rolled back rather than left in the user's field.
   const snapshot = takeSnapshot(el);
@@ -100,15 +107,18 @@ export async function insertText(
     options.verify ?? (isPlainValue ? verifyInserted : verifyInsertedLoose);
 
   for (const tier of ladderFor(kind)) {
-    const ran = await runTier(tier, el, text, options);
-    if (!ran) continue;
+    const execution = await runTier(tier, el, text, options);
+    if (!execution.ran) continue;
 
     // Rich editors commit to their model asynchronously — Quill and Lexical
     // both reconcile in a microtask or animation frame. Verifying in the same
     // synchronous turn reads the *pre-update* state and wrongly escalates.
     await settle();
 
-    const ok = verify(el, text);
+    const ok =
+      execution.readback !== undefined
+        ? execution.readback === text
+        : verify(el, text);
     attempts.push({
       tier,
       ok,
@@ -131,7 +141,15 @@ export async function insertText(
   // accepted only part of the text), which would leave the user's draft
   // corrupted. Principle 8 says the draft is provably untouched on any error,
   // so put it back before doing anything else.
-  if (!matchesSnapshot(el, snapshot)) restoreField(el, snapshot);
+  if (
+    modelEditor &&
+    originalModel?.ok &&
+    typeof originalModel.value === 'string'
+  ) {
+    await modelEditor.replace(originalModel.value);
+  } else if (!matchesSnapshot(el, snapshot)) {
+    restoreField(el, snapshot);
+  }
 
   // The draft is safe; hand the user their text rather than failing silently.
   const copied = await copyToClipboard(text);
@@ -171,21 +189,24 @@ async function runTier(
   el: HTMLElement,
   text: string,
   options: InsertOptions,
-): Promise<boolean> {
+): Promise<{ ran: boolean; readback?: string | null }> {
   switch (tier) {
     case 'exec-command':
-      return insertViaExecCommand(el, text);
+      return { ran: insertViaExecCommand(el, text) };
     case 'native-setter':
-      return insertViaNativeSetter(el, text);
+      return { ran: insertViaNativeSetter(el, text) };
     case 'contenteditable':
-      return insertIntoContentEditable(el, text);
+      return { ran: insertIntoContentEditable(el, text) };
     case 'paste-simulation':
-      return insertViaPasteSimulation(el, text);
-    case 'main-world':
-      return options.mainWorldInsert
-        ? await options.mainWorldInsert(text)
-        : false;
+      return { ran: insertViaPasteSimulation(el, text) };
+    case 'main-world': {
+      if (options.mainWorldEditor) {
+        const result = await options.mainWorldEditor.replace(text);
+        return { ran: result.ok, readback: result.value };
+      }
+      return { ran: false };
+    }
     case 'clipboard':
-      return copyToClipboard(text);
+      return { ran: await copyToClipboard(text) };
   }
 }

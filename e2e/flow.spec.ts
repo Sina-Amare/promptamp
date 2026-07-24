@@ -25,9 +25,9 @@ const panel = (page: Page) => page.locator(`.pa-panel`);
  * resets the view toggles.
  */
 async function waitForResult(page: Page): Promise<void> {
-  await expect(panel(page)).toBeVisible();
-  await expect(page.locator('.pa-body')).not.toBeEmpty();
-  await expect(page.locator('.pa-primary')).toBeEnabled();
+  await expect(panel(page)).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.pa-body')).not.toBeEmpty({ timeout: 15_000 });
+  await expect(page.locator('.pa-primary')).toBeEnabled({ timeout: 15_000 });
 }
 
 test('button appears on focus and is a ghost until the draft is long enough', async ({
@@ -122,7 +122,7 @@ test('enhances and replaces the draft on accept', async ({ page }) => {
   await field.click();
 
   await button(page).click();
-  await expect(panel(page)).toBeVisible();
+  await waitForResult(page);
 
   const body = page.locator(`.pa-body`);
   await expect(body).toContainText('Tips for a job interview please.');
@@ -186,11 +186,14 @@ test('Show changes renders a word-level diff, never mid-word', async ({
   const inserted = page.locator(`ins.pa-ins`);
   await expect(inserted.first()).toBeVisible();
 
-  // Every run must start and end on a word boundary: splitting inside a word
-  // breaks cursive shaping in Arabic and Persian.
+  const insertedText = (await inserted.allInnerTexts()).join('');
+  // A real assertion: the appended sentence is one complete word-level run,
+  // never a set of character fragments. Persian/Arabic and emoji grapheme
+  // boundaries are covered directly by diff.test.ts.
+  expect(insertedText).toContain('Be specific and concise');
   for (const text of await inserted.allInnerTexts()) {
-    expect(text).not.toMatch(/^\w.*\w$/u.test(text) ? /(?!)/ : /(?!)/);
     expect(text.trim().length).toBeGreaterThan(0);
+    expect(text).not.toMatch(/^\p{Mark}|\p{Mark}$/u);
   }
 });
 
@@ -204,6 +207,104 @@ test('Original toggle shows the untouched draft', async ({ page }) => {
 
   await page.locator(`.pa-pill`, { hasText: 'Original' }).click();
   await expect(page.locator(`.pa-body`)).toHaveText(DRAFT);
+});
+
+test('panel edits survive Original/Diff toggles and are what Replace inserts', async ({
+  page,
+}) => {
+  await page.goto('http://localhost:5174/');
+  const field = page.getByTestId('plain-textarea');
+  await field.fill(DRAFT);
+  await field.click();
+  await button(page).click();
+  await waitForResult(page);
+
+  const edited = 'My carefully edited final prompt.';
+  const body = page.locator('.pa-body');
+  await body.fill(edited);
+  await page.locator('.pa-pill', { hasText: 'Original' }).click();
+  await expect(body).toHaveText(DRAFT);
+  await page.locator('.pa-pill', { hasText: 'Original' }).click();
+  await expect(body).toHaveText(edited);
+  await page.locator('.pa-pill', { hasText: 'Show changes' }).click();
+  await page.locator('.pa-pill', { hasText: 'Show changes' }).click();
+  await expect(body).toHaveText(edited);
+
+  await page.locator('.pa-primary').click();
+  await expect
+    .poll(() => page.evaluate(() => window.playground.plain!()))
+    .toBe(edited);
+});
+
+test('an emptied result disables Replace, Copy, and the Replace shortcut', async ({
+  page,
+}) => {
+  await page.goto('http://localhost:5174/');
+  const field = page.getByTestId('plain-textarea');
+  await field.fill(DRAFT);
+  await field.click();
+  await button(page).click();
+  await waitForResult(page);
+
+  await page.locator('.pa-body').fill('');
+  await expect(page.locator('.pa-primary')).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Copy', exact: true }),
+  ).toBeDisabled();
+  await page.locator('.pa-body').press('ControlOrMeta+Enter');
+  expect(await page.evaluate(() => window.playground.plain!())).toBe(DRAFT);
+});
+
+test('a narrow viewport keeps the panel on-screen and Replace prominent', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 300, height: 520 });
+  await page.goto('http://localhost:5174/');
+  const field = page.getByTestId('plain-textarea');
+  await field.fill(DRAFT);
+  await field.click();
+  await button(page).click();
+  await waitForResult(page);
+
+  const panelBox = await panel(page).boundingBox();
+  const replaceBox = await page.locator('.pa-primary').boundingBox();
+  const retryBox = await page
+    .getByRole('button', { name: 'Retry', exact: true })
+    .boundingBox();
+  expect(panelBox).not.toBeNull();
+  expect(replaceBox).not.toBeNull();
+  expect(retryBox).not.toBeNull();
+  expect(panelBox!.width).toBeLessThan(320);
+  expect(panelBox!.x).toBeGreaterThanOrEqual(0);
+  expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(300);
+  expect(replaceBox!.width).toBeGreaterThan(panelBox!.width * 0.75);
+  expect(replaceBox!.y).toBeLessThan(retryBox!.y);
+});
+
+test('Stop discards partial output and an immediate new run starts cleanly', async ({
+  page,
+}) => {
+  await page.goto('http://localhost:5174/');
+  const field = page.getByTestId('plain-textarea');
+  const slowDraft = `${DRAFT} [[mock:slow:5000]]`;
+  await field.fill(slowDraft);
+  await field.click();
+  await button(page).click();
+  await expect(panel(page)).toBeVisible();
+
+  // The disc itself becomes Stop while the request owns the Port.
+  await button(page).click();
+  await expect(panel(page)).toHaveCount(0);
+  await expect(field).toBeFocused();
+  expect(await page.evaluate(() => window.playground.plain!())).toBe(slowDraft);
+
+  await field.fill(DRAFT);
+  await button(page).click();
+  await waitForResult(page);
+  await expect(page.locator('.pa-body')).toContainText(
+    'Tips for a job interview',
+  );
+  await expect(page.locator('.pa-body')).not.toContainText('[[mock:slow');
 });
 
 test('focus lands on the title, not on the destructive action', async ({

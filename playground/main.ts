@@ -7,7 +7,7 @@ import { registerPlainText } from '@lexical/plain-text';
 import { EditorView, basicSetup } from 'codemirror';
 import { insertText } from '../lib/insertion/engine';
 import { qualifies } from '../lib/insertion/detect';
-import { mainWorldInsertFunction } from '../lib/insertion/main-world';
+import { mainWorldEditorOperation } from '../lib/insertion/main-world';
 
 /**
  * Mounts one real editor per insertion tier.
@@ -51,10 +51,13 @@ window.promptampInsert = async (testId, text) => {
   target.focus();
 
   const outcome = await insertText(target, text, {
-    // In the playground the page *is* the main world, so tier 4 can call the
-    // editor's API directly instead of going through scripting.executeScript.
-    mainWorldInsert: (value: string) =>
-      Promise.resolve(mainWorldInsertFunction(value)),
+    // In the playground the page *is* the main world, so the harness can call
+    // the same bounded read/replace operation used by the static bridge.
+    mainWorldEditor: {
+      read: () => Promise.resolve(mainWorldEditorOperation('read')),
+      replace: (value: string) =>
+        Promise.resolve(mainWorldEditorOperation('replace', value)),
+    },
   });
 
   return { ok: outcome.ok, tier: outcome.tier, undoLost: outcome.undoLost };
@@ -178,6 +181,41 @@ if (cmHost) {
   readers.codemirror = () => view.state.doc.toString();
 }
 
+const monacoHost = document.getElementById('monaco-host');
+if (monacoHost) {
+  const input = monacoHost.querySelector<HTMLTextAreaElement>('.inputarea')!;
+  const lines = monacoHost.querySelector<HTMLElement>('.view-lines')!;
+  let value = '';
+  const render = (): void => {
+    input.value = value;
+    lines.textContent = value;
+  };
+  input.addEventListener('input', () => {
+    value = input.value;
+    render();
+  });
+  readers.monaco = () => value;
+
+  const model = {
+    getFullModelRange: () => ({ start: 0, end: value.length }),
+    getValue: () => value,
+  };
+  const editor = {
+    getDomNode: () => monacoHost,
+    getModel: () => model,
+    getValue: () => value,
+    executeEdits: (_source: string, edits: { text: string }[]): void => {
+      value = edits[0]?.text ?? value;
+      render();
+    },
+  };
+  (
+    globalThis as unknown as {
+      monaco: { editor: { getEditors: () => (typeof editor)[] } };
+    }
+  ).monaco = { editor: { getEditors: () => [editor] } };
+}
+
 /* ── Containers ──────────────────────────────────────────────────── */
 
 const shadowHost = document.getElementById('shadow-host');
@@ -192,6 +230,29 @@ if (shadowHost) {
   area.style.cssText = 'width:100%;min-height:120px;font:inherit;padding:8px;';
   shadow.append(area);
   readers.shadow = () => area.value;
+}
+
+/**
+ * Gemini's current ownership shape: the visible Quill editor lives inside the
+ * `<rich-textarea>` shadow tree, while Plus/Pro/Mic are siblings of the host.
+ * Keeping this boundary in the fixture prevents ordinary-DOM tests from giving
+ * a false green for production placement.
+ */
+const geminiHost = document.querySelector<HTMLElement>(
+  '[data-testid="gemini-host"]',
+);
+if (geminiHost) {
+  const shadow = geminiHost.attachShadow({ mode: 'open' });
+  const editor = document.createElement('div');
+  editor.className = 'ql-editor textarea gemini-line';
+  editor.dataset.testid = 'gemini-editable';
+  editor.contentEditable = 'true';
+  editor.setAttribute('role', 'textbox');
+  editor.setAttribute('aria-labelledby', 'gemini-label');
+  editor.style.cssText =
+    'display:block;width:100%;height:24px;line-height:24px;outline:none;white-space:nowrap;overflow:hidden;font:inherit;color:inherit;';
+  shadow.append(editor);
+  readers.gemini = () => editor.innerText;
 }
 
 const dialog = document.getElementById(

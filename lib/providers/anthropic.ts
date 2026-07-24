@@ -1,5 +1,10 @@
 import { ProviderError, errorFor } from './errors';
-import { buildHeaders, endpointFor, fetchWithRetry } from './openai-compat';
+import {
+  buildHeaders,
+  endpointFor,
+  errorFromEmbeddedFrame,
+  fetchWithRetry,
+} from './openai-compat';
 import type { ChatRequest, ChatResponse } from './types';
 
 /**
@@ -69,11 +74,15 @@ export const anthropicAdapter = async (
     },
     config,
     maxRetries,
+    req.onRetryWait,
   );
 
   req.onHeaders?.(response.headers);
+  req.onActivity?.();
 
-  if (streaming) return readAnthropicSse(response, onChunk);
+  if (streaming) {
+    return readAnthropicSse(response, onChunk, req.onActivity);
+  }
 
   const parsed = (await response.json()) as AnthropicBody;
 
@@ -119,6 +128,7 @@ export const anthropicAdapter = async (
 async function readAnthropicSse(
   response: Response,
   onChunk: (delta: string) => void,
+  onActivity?: () => void,
 ): Promise<ChatResponse> {
   const body = response.body;
   if (!body) throw errorFor('network');
@@ -140,43 +150,10 @@ async function readAnthropicSse(
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
-        const payload = trimmed.slice(5).trim();
-        if (!payload) continue;
-
-        let frame: AnthropicFrame;
-        try {
-          frame = JSON.parse(payload) as AnthropicFrame;
-        } catch {
-          continue;
-        }
-
-        if (
-          frame.type === 'content_block_delta' &&
-          frame.delta?.type === 'text_delta' &&
-          typeof frame.delta.text === 'string'
-        ) {
-          text += frame.delta.text;
-          onChunk(frame.delta.text);
-        }
-
-        if (frame.type === 'message_start' && frame.message?.usage) {
-          // Cache reads count separately; both are input the user paid for.
-          const usage = frame.message.usage;
-          promptTokens =
-            (usage.input_tokens ?? 0) +
-            (usage.cache_read_input_tokens ?? 0) +
-            (usage.cache_creation_input_tokens ?? 0);
-        }
-
-        if (frame.type === 'message_delta') {
-          completionTokens = frame.usage?.output_tokens ?? completionTokens;
-          stopReason = frame.delta?.stop_reason ?? stopReason;
-        }
-      }
+      for (const line of lines) processSseLine(line);
     }
+    buffer += decoder.decode();
+    processSseLine(buffer);
   } finally {
     reader.cancel().catch(() => undefined);
   }
@@ -197,6 +174,46 @@ async function readAnthropicSse(
     ...(promptTokens === undefined ? {} : { promptTokens }),
     ...(completionTokens === undefined ? {} : { completionTokens }),
   };
+
+  function processSseLine(line: string): void {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) return;
+    const payload = trimmed.slice(5).trim();
+    if (!payload) return;
+
+    let frame: AnthropicFrame;
+    try {
+      frame = JSON.parse(payload) as AnthropicFrame;
+    } catch {
+      return;
+    }
+    onActivity?.();
+    if (frame.type === 'error' || frame.error) {
+      throw errorFromEmbeddedFrame(frame.error ?? frame);
+    }
+
+    if (
+      frame.type === 'content_block_delta' &&
+      frame.delta?.type === 'text_delta' &&
+      typeof frame.delta.text === 'string'
+    ) {
+      text += frame.delta.text;
+      onChunk(frame.delta.text);
+    }
+
+    if (frame.type === 'message_start' && frame.message?.usage) {
+      const usage = frame.message.usage;
+      promptTokens =
+        (usage.input_tokens ?? 0) +
+        (usage.cache_read_input_tokens ?? 0) +
+        (usage.cache_creation_input_tokens ?? 0);
+    }
+
+    if (frame.type === 'message_delta') {
+      completionTokens = frame.usage?.output_tokens ?? completionTokens;
+      stopReason = frame.delta?.stop_reason ?? stopReason;
+    }
+  }
 }
 
 interface AnthropicFrame {
@@ -210,6 +227,7 @@ interface AnthropicFrame {
     };
   };
   usage?: { output_tokens?: number };
+  error?: unknown;
 }
 
 /** Concatenate text blocks; ignore any other block type the API adds later. */

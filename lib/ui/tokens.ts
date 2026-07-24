@@ -19,8 +19,8 @@ export const TOKENS_CSS = `
   --ph-text: #1A1A21;          /* 15.2:1 */
   --ph-text-muted: #5C5C66;    /*  5.9:1 */
   /* Emerald brand. Deep enough for AA as text: #047857 on white ≈ 5.1:1, so
-     links and the inline actions pass color-contrast; white on it (the disc
-     icon) is the same 5.1:1. */
+     links, the idle sparkle, and inline actions pass color-contrast. White on
+     it is the same 5.1:1 for hover and loading states. */
   --ph-accent: #047857;
   --ph-accent-fg: #FFFFFF;
   /* The "amplify" accent, from the logo. Amber is light, so its foreground is
@@ -49,8 +49,7 @@ export const TOKENS_CSS = `
   --ph-space-4: 16px;
   --ph-space-5: 24px;
 
-  /* The disc is 28px; the hit area is 40px, via transparent padding. */
-  --ph-btn-size: 28px;
+  /* The visible utility key/tab fits inside a complete 40px hit target. */
   --ph-btn-hit: 40px;
 
   --ph-type-body: 14px/1.55;

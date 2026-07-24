@@ -87,6 +87,7 @@ async function renderPanel(): Promise<void> {
   const sameTab = renderedTab === active;
   const scrollY = window.scrollY;
 
+  modelPainters.clear();
   panel.replaceChildren(el('p', { class: 'empty', text: t('common.loading') }));
   switch (active) {
     case 'providers':
@@ -274,6 +275,8 @@ function chainSummary(connections: ConfiguredConnection[]): HTMLElement {
  */
 const modelCache = new Map<string, ModelInfo[]>();
 const usageCache = new Map<string, UsageInfo>();
+/** Live, card-local repaint hooks for model loads that finish after Save. */
+const modelPainters = new Map<string, () => void>();
 
 /**
  * Fetch this connection's models into the cache. Pure cache populator — it
@@ -496,47 +499,67 @@ function connectionCard(
       save.disabled = true;
       save.textContent = t('common.saving');
       setStatus(t('common.saving'), '');
-      const keyInputHadValue = keyInput.value.trim().length > 0;
+      try {
+        const keyInputHadValue = keyInput.value.trim().length > 0;
 
-      // A user-supplied host is not covered by the manifest, so ask for it
-      // here — inside the click, which is the only place Firefox allows it.
-      if (config.allowsCustomBaseUrl && baseUrlInput.value.trim()) {
-        const granted = await requestPermission(
-          connection.providerId,
-          baseUrlInput.value.trim(),
-        );
-        if (!granted) {
-          setStatus(t('conn.permissionDenied'), 'err');
+        // A user-supplied host is not covered by the manifest, so ask for it
+        // here — inside the click, which is the only place Firefox allows it.
+        if (config.allowsCustomBaseUrl && baseUrlInput.value.trim()) {
+          const granted = await requestPermission(
+            connection.providerId,
+            baseUrlInput.value.trim(),
+          );
+          if (!granted) {
+            // Do not persist a connection that is known to be unusable. The
+            // form stays intact so the user can grant access and press Save
+            // again without retyping anything.
+            setStatus(t('conn.permissionDenied'), 'err');
+            return;
+          }
         }
+
+        await sendMessage({
+          type: 'connection:save',
+          connection: {
+            id: connection.id,
+            providerId: connection.providerId,
+            label: labelInput.value.trim() || config.label,
+            // An empty field means "keep the stored key", never "erase it".
+            ...(keyInput.value ? { apiKey: keyInput.value } : {}),
+            model: modelInput.value.trim() || config.defaultModel,
+            ...(config.allowsCustomBaseUrl && baseUrlInput.value
+              ? { baseUrl: baseUrlInput.value.trim() }
+              : {}),
+          },
+        });
+        keyInput.value = '';
+
+        // Saving the credential is the completed user action. Do not hold its
+        // success state behind a provider model-list request: an unreachable
+        // endpoint otherwise leaves the card saying "Saving…" indefinitely
+        // even though the key is already safely stored.
+        const hasKey = keyInputHadValue || connection.hasKey;
+        flash = {
+          cardTitle: connection.id,
+          text: t('common.saved'),
+          kind: 'ok',
+        };
+        await renderPanel();
+
+        // Populate the convenient model picker in the background. The live
+        // card repaints only that control when the list arrives, so another
+        // card's unsaved fields and this card's Saved confirmation survive.
+        if (hasKey || !config.requiresKey) {
+          void loadModelsFor(connection.id).then((loaded) => {
+            if (loaded) modelPainters.get(connection.id)?.();
+          });
+        }
+      } catch {
+        setStatus(t('conn.saveFailed'), 'err');
+      } finally {
+        save.disabled = false;
+        save.textContent = t('common.save');
       }
-
-      await sendMessage({
-        type: 'connection:save',
-        connection: {
-          id: connection.id,
-          providerId: connection.providerId,
-          label: labelInput.value.trim() || config.label,
-          // An empty field means "keep the stored key", never "erase it".
-          ...(keyInput.value ? { apiKey: keyInput.value } : {}),
-          model: modelInput.value.trim() || config.defaultModel,
-          ...(config.allowsCustomBaseUrl && baseUrlInput.value
-            ? { baseUrl: baseUrlInput.value.trim() }
-            : {}),
-        },
-      });
-      keyInput.value = '';
-
-      // The moment a key is in place, fetch the model list so the user picks
-      // from a real dropdown instead of typing an id. Populate the cache first,
-      // then flash "Saved" and repaint once — the re-render reads the cache and
-      // shows the dropdown, and a failed fetch quietly leaves the text field.
-      const hasKey = keyInputHadValue || connection.hasKey;
-      if (hasKey || !config.requiresKey) {
-        await loadModelsFor(connection.id);
-      }
-
-      flash = { cardTitle: connection.id, text: t('common.saved'), kind: 'ok' };
-      await renderPanel();
     })();
   });
 
@@ -742,6 +765,7 @@ function connectionCard(
   });
 
   paintModel();
+  modelPainters.set(connection.id, paintModel);
   paintUsage();
 
   const remove = el('button', {

@@ -22,6 +22,10 @@ export interface ChatRequest {
    * stops waiting on a blank panel and starts reading.
    */
   onChunk?: (delta: string) => void;
+  /** Any valid provider frame or response header reset the idle deadline. */
+  onActivity?: () => void;
+  /** A declared backoff extends the deadline instead of masquerading as a stall. */
+  onRetryWait?: (delayMs: number) => void;
   /**
    * Called with the raw response headers once they arrive. Used to read
    * rate-limit headers for the usage readout without a second request; ignored

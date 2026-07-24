@@ -18,7 +18,7 @@
 export function redactKeys(text: string): string {
   return text
     .replace(
-      /\b(sk-or-v1-|sk-ant-|sk-|gsk_|AIza)[A-Za-z0-9_-]{8,}/g,
+      /\b(sk-or-v1-|sk-ant-|sk-|gsk_|AIza|nvapi-)[A-Za-z0-9_-]{8,}/g,
       '$1[redacted]',
     )
     .replace(/\b[Bb]earer\s+[A-Za-z0-9._-]{16,}/g, 'Bearer [redacted]');

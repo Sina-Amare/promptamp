@@ -61,7 +61,7 @@ export interface CleanResult {
 export function clean(raw: string, draft: string): CleanResult {
   let text = raw.replace(/\r\n/g, '\n').trim();
 
-  text = stripCodeFence(text);
+  text = stripCodeFenceUnlessDraftOwned(text, draft);
 
   // Lead-ins stack ("Sure! Here's the improved prompt:"), so sweep until
   // nothing changes. Bounded by the pattern count: each pass must strip at
@@ -81,8 +81,8 @@ export function clean(raw: string, draft: string): CleanResult {
 
   for (const pattern of TRAILERS) text = text.replace(pattern, '');
 
-  text = stripCodeFence(text.trim());
-  text = stripWrappingQuotes(text).trim();
+  text = stripCodeFenceUnlessDraftOwned(text.trim(), draft);
+  text = stripWrappingQuotesUnlessDraftOwned(text, draft).trim();
 
   // The no-request sentinel: the draft held nothing to rewrite. Tolerate a
   // little stray punctuation a cheap model may tack on. Not an error — the panel
@@ -144,6 +144,38 @@ export function stripWrappingQuotes(text: string): string {
     }
   }
   return text;
+}
+
+function stripCodeFenceUnlessDraftOwned(text: string, draft: string): string {
+  return isWhollyFenced(draft) ? text : stripCodeFence(text);
+}
+
+function stripWrappingQuotesUnlessDraftOwned(
+  text: string,
+  draft: string,
+): string {
+  const pair = wrappingQuotePair(draft.trim());
+  if (pair && text.startsWith(pair[0]) && text.endsWith(pair[1])) return text;
+  return stripWrappingQuotes(text);
+}
+
+function isWhollyFenced(text: string): boolean {
+  return /^```[a-zA-Z0-9_-]*\n[\s\S]*\n?```$/.test(text.trim());
+}
+
+function wrappingQuotePair(text: string): readonly [string, string] | null {
+  const pairs: readonly (readonly [string, string])[] = [
+    ['"', '"'],
+    ["'", "'"],
+    ['“', '”'],
+    ['«', '»'],
+  ];
+  return (
+    pairs.find(
+      ([open, close]) =>
+        text.length > 1 && text.startsWith(open) && text.endsWith(close),
+    ) ?? null
+  );
 }
 
 /** Whitespace-insensitive comparison for the "already looks good" check. */

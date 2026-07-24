@@ -136,6 +136,25 @@ describe('fallback chain', () => {
     expect(safe?.message).toMatch(/didn.t respond in time/);
   });
 
+  it('hands a stalled primary to a fresh fallback signal', async () => {
+    await chain('mock-slow-5000', 'mock-1');
+    const onReset = vi.fn();
+
+    const result = await runEnhancement(
+      { draft: DRAFT, origin: 'https://example.com' },
+      {
+        signal: new AbortController().signal,
+        onChunk: () => undefined,
+        onReset,
+        idleTimeoutMs: 500,
+      },
+    );
+
+    expect(result.connectionLabel).toBe('mock-1');
+    expect(result.fellBackFrom?.kind).toBe('network');
+    expect(onReset).toHaveBeenCalledTimes(1);
+  });
+
   it('summarises every attempt when the whole chain fails', async () => {
     await chain('mock-bad-key', 'mock-quota', 'mock-network');
 

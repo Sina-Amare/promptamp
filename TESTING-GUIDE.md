@@ -4,7 +4,7 @@ A guided pass, about 20 minutes. It is ordered so that anything broken shows up
 early, and so you never have to guess whether something is a bug or the design.
 
 Automated tests already cover the pipeline, the insertion ladder, the fallback
-chain, and accessibility — 270 unit tests and 79 end-to-end tests against a real
+chain, and accessibility — 331 unit tests and 108 end-to-end tests against a real
 loaded extension. What they *cannot* cover is a real logged-in site with a real
 model behind a real key. That is what this pass is for.
 

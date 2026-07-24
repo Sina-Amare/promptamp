@@ -32,12 +32,20 @@ export interface ButtonCallbacks {
   onActivate: () => void;
   onStop: () => void;
   onDismiss: (choice: DismissChoice) => void;
+  /** Remove this site's manual pin and return to automatic placement. */
+  onResetPosition?: () => void;
+  /** Read live state so a pin created after mount immediately gains a reset. */
+  canResetPosition?: () => boolean;
   /**
-   * The user dragged the disc and released it at these viewport coordinates
+   * The user dragged the control and released it at these viewport coordinates
    * (the wrap's top-left). The site remembers the spot — the user is the
    * final authority on placement.
    */
   onDragEnd?: (point: { top: number; left: number }) => void;
+  /** Suspend automatic layout tracking once movement becomes a real drag. */
+  onDragStart?: () => void;
+  /** Resume automatic tracking when capture is cancelled before a drop. */
+  onDragCancel?: () => void;
 }
 
 export interface ButtonHandle {
@@ -45,6 +53,7 @@ export interface ButtonHandle {
   focus: () => void;
   setState: (state: ButtonState) => void;
   setProfile: (name: string, category: string) => void;
+  setPlacement: (slot: string) => void;
   setInstant: (instant: boolean) => void;
   getState: () => ButtonState;
   destroy: () => void;
@@ -108,27 +117,34 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
     attrs: {
       'data-state': 'ghost',
       'data-entering': 'true',
+      'data-placement': 'inside',
     },
     children: [button, dismiss, tooltip],
   });
 
   /* ── drag to place ─────────────────────────────────────────────── */
 
-  // The user is the final authority on placement: drag the disc anywhere and
+  // The user is the final authority on placement: drag the control anywhere and
   // the site remembers the spot. A press that moves less than the threshold is
   // a click; past it, the click is swallowed so a drop never fires an enhance.
   const DRAG_THRESHOLD = 5;
-  let justDragged = false;
+  let suppressClick = false;
+  let suppressClickTimer: ReturnType<typeof setTimeout> | undefined;
+  let cancelActiveDrag: (() => void) | null = null;
 
   wrap.addEventListener('pointerdown', (event) => {
     if (event.button !== 0) return;
     if ((event.target as Element).closest('.pa-dismiss, .pa-menu')) return;
+    cancelActiveDrag?.();
     const startX = event.clientX;
     const startY = event.clientY;
     const startRect = wrap.getBoundingClientRect();
+    const pointerId = event.pointerId;
     let dragging = false;
+    let finished = false;
 
     const onMove = (ev: PointerEvent): void => {
+      if (ev.pointerId !== pointerId || finished) return;
       if (
         !dragging &&
         Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD
@@ -137,7 +153,15 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
       }
       if (!dragging) {
         dragging = true;
-        wrap.setPointerCapture(event.pointerId);
+        callbacks.onDragStart?.();
+        try {
+          // Capture only after this has become a drag. Capturing the initial
+          // press on the wrapper retargets pointerup away from the inner
+          // button in Chromium, which prevents an ordinary click from firing.
+          wrap.setPointerCapture(pointerId);
+        } catch {
+          // Window-level listeners below still guarantee cleanup.
+        }
         wrap.setAttribute('data-dragging', 'true');
       }
       const left = Math.min(
@@ -150,26 +174,71 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
       );
       wrap.style.transform = `translate3d(${String(Math.round(left))}px, ${String(Math.round(top))}px, 0)`;
     };
-    const onUp = (): void => {
-      wrap.removeEventListener('pointermove', onMove);
-      wrap.removeEventListener('pointerup', onUp);
-      wrap.removeEventListener('pointercancel', onUp);
-      if (!dragging) return;
+
+    const cleanup = (): void => {
+      if (finished) return;
+      finished = true;
+      globalThis.removeEventListener('pointermove', onMove, true);
+      globalThis.removeEventListener('pointerup', onUp, true);
+      globalThis.removeEventListener('pointercancel', onCancel, true);
+      wrap.removeEventListener('lostpointercapture', onLostCapture);
       wrap.removeAttribute('data-dragging');
-      justDragged = true; // swallow the click that follows the drop
-      const rect = wrap.getBoundingClientRect();
-      callbacks.onDragEnd?.({ top: rect.top, left: rect.left });
+      if (wrap.hasPointerCapture(pointerId)) {
+        try {
+          wrap.releasePointerCapture(pointerId);
+        } catch {
+          // The browser may already have released it during cancellation.
+        }
+      }
+      if (cancelActiveDrag === cleanup) cancelActiveDrag = null;
     };
-    wrap.addEventListener('pointermove', onMove);
-    wrap.addEventListener('pointerup', onUp);
-    wrap.addEventListener('pointercancel', onUp);
+
+    const finish = (commit: boolean): void => {
+      if (finished) return;
+      if (commit && dragging) {
+        // Swallow only the synthetic click belonging to this drop. The timer
+        // clears the guard before a later intentional click.
+        suppressClick = true;
+        clearTimeout(suppressClickTimer);
+        suppressClickTimer = setTimeout(() => {
+          suppressClick = false;
+        }, 0);
+        const rect = wrap.getBoundingClientRect();
+        callbacks.onDragEnd?.({ top: rect.top, left: rect.left });
+      } else if (dragging) {
+        callbacks.onDragCancel?.();
+      }
+      cleanup();
+    };
+
+    function onUp(ev: PointerEvent): void {
+      if (ev.pointerId !== pointerId) return;
+      finish(true);
+    }
+    function onCancel(ev: PointerEvent): void {
+      if (ev.pointerId !== pointerId) return;
+      finish(false);
+    }
+    function onLostCapture(ev: PointerEvent): void {
+      if (ev.pointerId !== pointerId) return;
+      finish(false);
+    }
+
+    cancelActiveDrag = cleanup;
+    // Window capture listeners see the release even if a non-drag press ends
+    // outside the target, so no stale pointer state survives to the next click.
+    globalThis.addEventListener('pointermove', onMove, true);
+    globalThis.addEventListener('pointerup', onUp, true);
+    globalThis.addEventListener('pointercancel', onCancel, true);
+    wrap.addEventListener('lostpointercapture', onLostCapture);
   });
 
   wrap.addEventListener(
     'click',
     (event) => {
-      if (justDragged) {
-        justDragged = false;
+      if (suppressClick) {
+        suppressClick = false;
+        clearTimeout(suppressClickTimer);
         event.stopPropagation();
         event.preventDefault();
       }
@@ -251,8 +320,58 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
   /* ── dismissal (§1.5) ──────────────────────────────────────────── */
 
   let menu: HTMLElement | null = null;
+  let menuPositionRaf = 0;
+
+  function positionMenu(): void {
+    if (!menu) return;
+    const anchor = wrap.getBoundingClientRect();
+    const menuBox = menu.getBoundingClientRect();
+    const margin = 8;
+    const gap = 4;
+    const maximumLeft = Math.max(
+      margin,
+      globalThis.innerWidth - margin - menuBox.width,
+    );
+    const left = Math.min(
+      Math.max(margin, anchor.right - menuBox.width),
+      maximumLeft,
+    );
+    const below = anchor.bottom + gap;
+    const above = anchor.top - gap - menuBox.height;
+    const preferredTop =
+      below + menuBox.height <= globalThis.innerHeight - margin ||
+      above < margin
+        ? below
+        : above;
+    const maximumTop = Math.max(
+      margin,
+      globalThis.innerHeight - margin - menuBox.height,
+    );
+    const top = Math.min(Math.max(margin, preferredTop), maximumTop);
+
+    // The menu remains a child of the wrapper for focus ownership, while its
+    // coordinates are projected back from viewport space. This works with the
+    // wrapper's translate3d positioning and flips above near the screen edge.
+    menu.style.inset = 'auto';
+    menu.style.left = `${String(left - anchor.left)}px`;
+    menu.style.top = `${String(top - anchor.top)}px`;
+  }
+
+  function scheduleMenuPosition(): void {
+    if (!menu || menuPositionRaf !== 0) return;
+    menuPositionRaf = requestAnimationFrame(() => {
+      menuPositionRaf = 0;
+      positionMenu();
+    });
+  }
 
   function closeMenu(): void {
+    if (menuPositionRaf !== 0) {
+      cancelAnimationFrame(menuPositionRaf);
+      menuPositionRaf = 0;
+    }
+    globalThis.removeEventListener('resize', scheduleMenuPosition);
+    globalThis.removeEventListener('scroll', scheduleMenuPosition, true);
     menu?.remove();
     menu = null;
     dismiss.setAttribute('aria-expanded', 'false');
@@ -264,8 +383,13 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
       return;
     }
 
-    const choice = (label: string, value: DismissChoice): HTMLElement =>
+    const choice = (
+      label: string,
+      value: DismissChoice | 'reset' | 'cancel',
+      className?: string,
+    ): HTMLElement =>
       el('li', {
+        ...(className ? { class: className } : {}),
         children: [
           (() => {
             const item = el('button', {
@@ -274,7 +398,9 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
             });
             item.addEventListener('click', () => {
               closeMenu();
-              callbacks.onDismiss(value);
+              if (value === 'reset') callbacks.onResetPosition?.();
+              else if (value === 'cancel') button.focus();
+              else callbacks.onDismiss(value);
             });
             return item;
           })(),
@@ -285,13 +411,27 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
       class: 'pa-menu',
       attrs: { role: 'menu', 'aria-label': t('button.dismiss') },
       children: [
+        callbacks.onResetPosition && callbacks.canResetPosition?.()
+          ? choice(t('menu.resetPosition'), 'reset')
+          : null,
         choice(t('menu.hideUntilReload'), 'session'),
         choice(t('menu.hideOnSite'), 'site'),
         choice(t('menu.hideEverywhere'), 'everywhere'),
-      ],
+        choice(t('menu.cancel'), 'cancel', 'pa-menu-cancel'),
+      ].filter((node): node is HTMLElement => node !== null),
     });
 
+    menu.style.visibility = 'hidden';
     wrap.append(menu);
+    positionMenu();
+    menu.style.removeProperty('visibility');
+    globalThis.addEventListener('resize', scheduleMenuPosition, {
+      passive: true,
+    });
+    globalThis.addEventListener('scroll', scheduleMenuPosition, {
+      capture: true,
+      passive: true,
+    });
     dismiss.setAttribute('aria-expanded', 'true');
     menu.querySelector('button')?.focus();
   }
@@ -325,12 +465,27 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
       dot.style.background = CATEGORY_COLORS[category] ?? 'transparent';
       tooltip.textContent = tooltipText();
     },
+    setPlacement: (slot) => {
+      wrap.setAttribute('data-slot', slot);
+      const side = (['right', 'left', 'above', 'below'] as const).find(
+        (candidate) => slot.includes(`outside-${candidate}`),
+      );
+      wrap.setAttribute(
+        'data-placement',
+        side ? 'outside' : slot === 'hidden' ? 'hidden' : 'inside',
+      );
+      if (side) wrap.setAttribute('data-side', side);
+      else wrap.removeAttribute('data-side');
+      scheduleMenuPosition();
+    },
     setInstant: (instant) => {
       wrap.setAttribute('data-instant', instant ? 'true' : 'false');
       wrap.setAttribute('data-entering', instant ? 'false' : 'true');
     },
     destroy: () => {
       clearTimeout(doneTimer);
+      clearTimeout(suppressClickTimer);
+      cancelActiveDrag?.();
       closeMenu();
       wrap.remove();
     },

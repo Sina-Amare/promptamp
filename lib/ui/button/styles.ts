@@ -69,26 +69,90 @@ export const BUTTON_CSS = `
   display: grid;
   place-items: center;
   pointer-events: auto;
-  /* Transparent padding turns a 28px disc into a 40px target — comfortably
-     past WCAG 2.5.8's 24px floor without a 40px visual footprint. */
+  touch-action: none;
+  /* Transparent padding gives every visual treatment a complete 40px target —
+     comfortably past WCAG 2.5.8's 24px floor. */
+}
+
+/*
+ * Placement has two visual grammars:
+ * - in a host action row, a quiet rounded utility key;
+ * - outside, a tab physically attached to the composer's nearest edge.
+ *
+ * The hit target remains the same 40px square in both cases. Only our visual
+ * backplate changes, so collision guarantees and pointer geometry are stable.
+ */
+.pa-button-wrap[data-placement='outside'][data-side='right'] {
+  justify-items: start;
+}
+.pa-button-wrap[data-placement='outside'][data-side='left'] {
+  justify-items: end;
+}
+.pa-button-wrap[data-placement='outside'][data-side='above'] {
+  align-items: end;
+}
+.pa-button-wrap[data-placement='outside'][data-side='below'] {
+  align-items: start;
+}
+
+/* Full placement recalculations ease over a few pixels; the per-frame scroll
+   glide opts out so the control never trails behind its composer. */
+.pa-button-wrap[data-positioned='true'][data-gliding='false']:not([data-dragging='true']) {
+  transition: transform 120ms var(--ph-ease-standard);
+}
+
+.pa-button-wrap[data-gliding='true'],
+.pa-button-wrap[data-dragging='true'] {
+  transition: none;
 }
 
 .pa-button {
-  width: var(--ph-btn-size);
-  height: var(--ph-btn-size);
+  position: relative;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
   border: 1px solid var(--ph-border);
-  border-radius: var(--ph-radius-button);
-  background: var(--ph-accent);
-  color: var(--ph-accent-fg);
-  box-shadow: var(--ph-shadow-button);
+  border-radius: 9px;
+  background: var(--ph-surface-raised);
+  color: var(--ph-accent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
   cursor: pointer;
-  opacity: 0.9;
+  opacity: 0.94;
   font: inherit;
   transition:
+    background-color var(--ph-dur-micro) var(--ph-ease-standard),
+    color var(--ph-dur-micro) var(--ph-ease-standard),
     opacity var(--ph-dur-micro) var(--ph-ease-standard),
     transform var(--ph-dur-micro) var(--ph-ease-standard);
+}
+
+.pa-button-wrap[data-placement='outside'] .pa-button {
+  width: 30px;
+  height: 32px;
+  background: var(--ph-surface);
+  box-shadow: var(--ph-shadow-button);
+}
+
+.pa-button-wrap[data-placement='outside'][data-side='right'] .pa-button {
+  border-left: 2px solid var(--ph-accent);
+  border-radius: 0 10px 10px 0;
+}
+.pa-button-wrap[data-placement='outside'][data-side='left'] .pa-button {
+  border-right: 2px solid var(--ph-accent);
+  border-radius: 10px 0 0 10px;
+}
+.pa-button-wrap[data-placement='outside'][data-side='above'] .pa-button {
+  width: 32px;
+  height: 30px;
+  border-bottom: 2px solid var(--ph-accent);
+  border-radius: 10px 10px 0 0;
+}
+.pa-button-wrap[data-placement='outside'][data-side='below'] .pa-button {
+  width: 32px;
+  height: 30px;
+  border-top: 2px solid var(--ph-accent);
+  border-radius: 0 0 10px 10px;
 }
 
 /* Entrance: scale from 0.95, never from 0. A tool invoked this often has to
@@ -116,9 +180,11 @@ export const BUTTON_CSS = `
 
 /* Hover effects only where hovering is a real thing. */
 @media (hover: hover) and (pointer: fine) {
-  .pa-button-wrap:hover .pa-button {
+  .pa-button-wrap:not([data-state='ghost']):hover .pa-button {
+    background: var(--ph-accent);
+    color: var(--ph-accent-fg);
     opacity: 1;
-    transform: scale(1.05);
+    transform: scale(1.04);
   }
 }
 
@@ -148,6 +214,8 @@ export const BUTTON_CSS = `
 .pa-button-wrap[data-state='loading'] .pa-button {
   opacity: 1;
   cursor: pointer;
+  background: var(--ph-accent);
+  color: var(--ph-accent-fg);
 }
 
 .pa-button-wrap[data-state='error'] .pa-button {
@@ -178,6 +246,9 @@ export const BUTTON_CSS = `
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .pa-button-wrap {
+    transition: none !important;
+  }
   .pa-arc {
     animation: none;
   }
@@ -187,8 +258,8 @@ export const BUTTON_CSS = `
    complaint surface. */
 .pa-dot {
   position: absolute;
-  inset-block-end: 5px;
-  inset-inline-end: 5px;
+  inset-block-end: 2px;
+  inset-inline-end: 2px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -246,12 +317,13 @@ export const BUTTON_CSS = `
   opacity: 1;
 }
 
-/* Dismissal menu — the three-choice escape hatch from §1.5. */
+/* Dismissal menu. JS projects it into viewport coordinates and flips/clamps
+   it at every edge; max-height is the final guard for unusually short screens. */
 .pa-menu {
   position: absolute;
-  inset-block-start: calc(100% + 4px);
-  inset-inline-end: 0;
   min-width: 190px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   padding: var(--ph-space-1);
   border: 1px solid var(--ph-border);
   border-radius: var(--ph-radius-chip);
@@ -280,6 +352,12 @@ export const BUTTON_CSS = `
 .pa-menu button:focus-visible {
   background: var(--ph-surface-raised);
   outline: none;
+}
+
+.pa-menu-cancel {
+  margin-block-start: var(--ph-space-1);
+  padding-block-start: var(--ph-space-1);
+  border-block-start: 1px solid var(--ph-border);
 }
 
 .pa-visually-hidden {

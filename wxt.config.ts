@@ -29,7 +29,7 @@ export default defineConfig({
     short_name: 'PromptAmp',
     description:
       'Turn rough drafts into engineered prompts with one tap, in any text field. Bring your own API key — no backend, no telemetry.',
-    version: '0.2.1',
+    version: '0.2.2',
 
     // Every size is emitted rather than left to the browser: Chrome scales
     // 128 down to 16 badly enough that a thin arc turns to grey mush.
@@ -51,14 +51,7 @@ export default defineConfig({
       },
     },
 
-    permissions: [
-      'storage',
-      'activeTab',
-      'contextMenus',
-      'commands',
-      'scripting',
-      'identity',
-    ],
+    permissions: ['storage', 'contextMenus', 'commands', 'identity'],
 
     host_permissions: PROVIDER_API_HOSTS,
 
@@ -91,8 +84,8 @@ export default defineConfig({
     browser_specific_settings: {
       gecko: {
         id: 'promptamp@sina-amare.github.io',
-        // MV3 + `identity.launchWebAuthFlow` both need 115+.
-        strict_min_version: '115.0',
+        // Manifest content scripts in the MAIN execution world need 128+.
+        strict_min_version: '128.0',
         // AMO requires this from 2025-11-03. PromptAmp has no backend and
         // collects nothing for itself, but the draft text (websiteContent)
         // and the key used to authenticate (authenticationInfo) do leave the

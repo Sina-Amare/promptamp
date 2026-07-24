@@ -58,6 +58,19 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
   });
 }
 
+function streamedResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+        controller.close();
+      },
+    }),
+    { status: 200, headers: { 'content-type': 'text/event-stream' } },
+  );
+}
+
 /** Read the JSON body of the nth fetch call, asserting the call happened. */
 function bodyOf(
   fetchMock: { mock: { calls: unknown[][] } },
@@ -372,6 +385,111 @@ describe('openai-compat adapter', () => {
     });
   });
 
+  it.each([
+    ['length', 'too-long'],
+    ['content_filter', 'refusal'],
+  ])('classifies finish_reason %s', async (finishReason, kind) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          choices: [
+            {
+              message: { content: 'partial output' },
+              finish_reason: finishReason,
+            },
+          ],
+        }),
+      ),
+    );
+
+    await expect(openaiCompatAdapter(request('groq'))).rejects.toMatchObject({
+      kind,
+    });
+  });
+
+  it('parses SSE frames split across network chunks', async () => {
+    const chunks: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          streamedResponse([
+            'data: {"choices":[{"delta":{"cont',
+            'ent":"Better "}}]}\n\ndata: {"choices":[{"delta":{"content":"draft"}}',
+            ',{"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+          ]),
+        ),
+    );
+
+    const result = await openaiCompatAdapter(
+      request('groq', { onChunk: (delta) => chunks.push(delta) }),
+    );
+
+    expect(result.text).toBe('Better draft');
+    expect(chunks).toEqual(['Better ', 'draft']);
+  });
+
+  it('surfaces an embedded SSE error instead of an empty refusal', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          streamedResponse([
+            'data: {"error":{"type":"overloaded_error","message":"Provider overloaded"}}\n\n',
+          ]),
+        ),
+    );
+
+    await expect(
+      openaiCompatAdapter(request('groq', { onChunk: () => undefined })),
+    ).rejects.toMatchObject({ kind: 'network' });
+  });
+
+  it('rejects a streamed completion cut off for length', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          streamedResponse([
+            'data: {"choices":[{"delta":{"content":"half"},"finish_reason":"length"}]}\n\n',
+          ]),
+        ),
+    );
+
+    await expect(
+      openaiCompatAdapter(request('groq', { onChunk: () => undefined })),
+    ).rejects.toMatchObject({ kind: 'too-long' });
+  });
+
+  it('reports declared retry waits to the timeout owner', async () => {
+    const onRetryWait = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('{"error":{"message":"slow down"}}', {
+          status: 429,
+          headers: { 'retry-after': '3' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          choices: [{ message: { content: 'done' } }],
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((cb: () => void) => {
+      cb();
+      return 0;
+    }) as never);
+
+    await openaiCompatAdapter(request('groq', { onRetryWait }));
+    expect(onRetryWait).toHaveBeenCalledWith(3_000);
+  });
+
   it('fails before the network when a required key is missing', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -465,6 +583,24 @@ describe('anthropic adapter', () => {
     await expect(anthropicAdapter(request('anthropic'))).rejects.toMatchObject({
       kind: 'too-long',
     });
+  });
+
+  it('surfaces an Anthropic stream error frame', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          streamedResponse([
+            'event: error\n',
+            'data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}\n\n',
+          ]),
+        ),
+    );
+
+    await expect(
+      anthropicAdapter(request('anthropic', { onChunk: () => undefined })),
+    ).rejects.toMatchObject({ kind: 'network' });
   });
 
   it('flattens multiple text blocks and ignores other block types', () => {

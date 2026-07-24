@@ -38,8 +38,8 @@ Output: `.output/promptamp-<version>-firefox.zip`
 ```bash
 pnpm typecheck   # tsc --noEmit, strict
 pnpm lint        # ESLint, including the rule that blocks key access from content scripts
-pnpm test        # 270 unit tests
-pnpm e2e         # 79 end-to-end tests against a real loaded extension
+pnpm test        # 331 unit tests
+pnpm e2e         # 108 end-to-end tests against a real loaded extension
 ```
 
 `pnpm e2e` builds first and drives a local page in `playground/`. It makes no
@@ -65,13 +65,13 @@ The only generated artifacts are:
 
 A reviewer's time is best spent on these five, in this order:
 
-### 1. No remote code — `entrypoints/background.ts`, `lib/insertion/main-world.ts`
+### 1. No remote code — `entrypoints/editor-bridge.content.ts`, `lib/insertion/main-world.ts`
 
-There is no `eval`, no `new Function`, and no script loaded from a URL. The one
-call to `chrome.scripting.executeScript` injects `mainWorldInsertFunction`,
-which is defined in `lib/insertion/main-world.ts` and bundled in the package.
-It runs only when the user presses Replace, and only when the four preceding
-insertion strategies have all failed to write to the editor.
+There is no `eval`, no `new Function`, no script loaded from a URL, and no
+runtime script injection. WXT bundles a narrow static MAIN-world content script
+for Monaco and CodeMirror. It exposes only bounded read and whole-model replace
+operations for the active editor and returns exact model readback; it cannot
+access extension storage, provider data, keys, or prompt instructions.
 
 ### 2. Keys are unreachable from content scripts — `lib/storage/credentials.ts`
 
@@ -86,7 +86,7 @@ Keys are written to `storage.local`, never `storage.sync`.
 
 ### 3. Network destinations — `wxt.config.ts`, `lib/providers/registry.ts`
 
-`host_permissions` is a fixed list of nine provider API hosts.
+`host_permissions` is a fixed list of ten provider API origins.
 `optional_host_permissions` exists solely for the "Custom (OpenAI-compatible)"
 provider, is not granted at install, and is requested for one specific host
 inside the click handler that saves it (`entrypoints/options/main.ts`).

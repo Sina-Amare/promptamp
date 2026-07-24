@@ -31,9 +31,11 @@ export const en = {
   'button.tipProfile': ' · Profile: ⁨{name}⁩',
 
   /* ── the dismissal menu (§1.5) ────────────────────────────────── */
+  'menu.resetPosition': 'Reset icon position',
   'menu.hideUntilReload': 'Hide until next visit',
   'menu.hideOnSite': 'Hide on this site',
   'menu.hideEverywhere': 'Hide everywhere',
+  'menu.cancel': 'Cancel',
   'menu.settings': 'PromptAmp settings…',
 
   /* ── the preview panel (§2) ───────────────────────────────────── */
@@ -81,6 +83,12 @@ export const en = {
   'error.cancelled': 'Cancelled',
   'error.unknown': 'Something went wrong',
   'error.draftSafe': 'Your prompt is unchanged.',
+  'error.emptyResult':
+    'The enhanced prompt is empty. Your original prompt was not changed.',
+  'error.interrupted':
+    'The background worker stopped before the enhancement finished. Your prompt is unchanged.',
+  'error.interruptedRemedy':
+    'Retry the enhancement. If it happens again, refresh this page to reconnect PromptAmp.',
   'error.retryIn': 'Retry in {seconds}s',
   'error.fellBack': '{failed} failed — used {used} instead.',
   'error.noInsert':
@@ -187,7 +195,9 @@ export const en = {
     'Your browser has not yet allowed PromptAmp to reach {host}. Until you allow it, requests will fail even though your key is correct.',
   'conn.permissionGrant': 'Allow access to {host}',
   'conn.permissionDenied':
-    'Saved, but your browser declined access to that host — requests will fail until you allow it.',
+    'Not saved — your browser declined access to that host. Allow access, then try Save again.',
+  'conn.saveFailed':
+    'Could not save this connection. Check the model, host, and permission, then try again.',
 
   /* ── options: profiles ────────────────────────────────────────── */
   'profiles.builtin': 'Built-in profiles',

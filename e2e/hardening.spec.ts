@@ -81,14 +81,18 @@ test('never exposes a key to the page', async ({ page, worker }) => {
       }
     ).chrome;
     await api.storage.local.set({
-      credentials: {
-        mock: {
+      credentials: [
+        {
+          id: 'leak-canary',
+          providerId: 'mock',
+          label: 'Mock',
           apiKey: value,
           model: 'mock-1',
           authMethod: 'manual',
           addedAt: 0,
         },
-      },
+      ],
+      credentials$: { v: 2 },
     });
   }, key);
 
@@ -97,6 +101,9 @@ test('never exposes a key to the page', async ({ page, worker }) => {
   await page.getByTestId('plain-textarea').click();
   await page.locator('.pa-button').click();
   await expect(page.locator('.pa-panel')).toBeVisible();
+  await expect(page.locator('.pa-body')).toContainText('Be specific', {
+    timeout: 15_000,
+  });
 
   // The content script cannot import the credentials module at all — ESLint
   // enforces that — so nothing key-shaped should exist in the page realm.

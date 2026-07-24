@@ -1,12 +1,26 @@
 import {
+  classifyEditor,
   deepActiveElement,
   qualifies,
   readValue,
   resolveDirection,
+  visualEditorRoot,
 } from '../insertion/detect';
 import { isEnhanceable } from '../enhance/assemble';
 import type { ButtonCorner } from '../storage/schemas';
-import { isFieldVisible, placeButton } from './position';
+import {
+  closestComposed,
+  composedContains,
+  composedParentElement,
+  queryComposedAll,
+} from '../dom/composed';
+import {
+  composerShell,
+  isFieldVisible,
+  isPlacementSafe,
+  placeButton,
+} from './position';
+import type { ComposerPlacementMode } from './compatibility';
 
 /**
  * Watches which field has focus and keeps the button pinned to it.
@@ -36,6 +50,12 @@ export interface TrackerCallbacks {
   onMove: (
     position: { top: number; left: number },
     corner: ButtonCorner,
+    /** True during scroll/drag-style motion; disables discrete easing. */
+    instant?: boolean,
+    /** False only when no collision-free complete hit target exists. */
+    visible?: boolean,
+    /** Stable slot identity, also used for placement-aware button styling. */
+    slot?: string,
   ) => void;
   /** Draft content changed — drives ghost/idle/typing. */
   onDraftChange: (draft: string, enhanceable: boolean) => void;
@@ -63,6 +83,12 @@ export interface TrackerOptions {
    * field's bottom-right). Outranks every placement rule when set.
    */
   pinnedOffset: () => { dx: number; dy: number } | null;
+  /** True while the user is dragging; observers must not fight their pointer. */
+  isPlacementLocked?: () => boolean;
+  /** Dedicated presentation for hosts whose action row hydrates in stages. */
+  placementMode?: () => ComposerPlacementMode;
+  /** Bounded compatibility reacquisition when final hydration loses focus. */
+  fallbackField?: () => HTMLElement | null;
   /** Checked before any injection — a broken off switch is unforgivable. */
   isSuppressed: () => boolean;
 }
@@ -76,6 +102,12 @@ const POLL_MS = 1000;
 /** How long after the last scroll event the glide stops and the ladder re-runs. */
 const SCROLL_SETTLE_MS = 120;
 
+/** Bounded recovery window for multi-stage framework hydration. */
+const REPLACEMENT_GRACE_MS = 15_000;
+
+/** Fast enough to be visually atomic, slow enough not to churn during boot. */
+const REPLACEMENT_RETRY_MS = 100;
+
 export function createFieldTracker(
   callbacks: TrackerCallbacks,
   options: TrackerOptions,
@@ -85,55 +117,149 @@ export function createFieldTracker(
   reposition: () => void;
   current: () => HTMLElement | null;
 } {
+  let started = false;
   let field: HTMLElement | null = null;
   let direction: 'ltr' | 'rtl' = 'ltr';
   let typingTimer: ReturnType<typeof setTimeout> | undefined;
   let emitTimer: ReturnType<typeof setTimeout> | undefined;
-  let pollTimer: ReturnType<typeof setInterval> | undefined;
+  let safetyTimer: ReturnType<typeof setInterval> | undefined;
   let scrollTargets: EventTarget[] = [];
   let fieldResize: ResizeObserver | null = null;
+  let fieldMutation: MutationObserver | null = null;
+  let mutationRoot: Element | null = null;
+  let mutationRaf = 0;
+  let replacementTimer: ReturnType<typeof setTimeout> | undefined;
+  let replacementDeadline = 0;
+  let replacementRecords: MutationRecord[] = [];
+  let anchor: Element | null = null;
+  let fieldKind: ReturnType<typeof classifyEditor> = 'unknown';
+  let fieldTag = '';
+  let replacementRect: RectSnapshot | null = null;
   // The corner chosen for the current field. Preferred on every reposition, so
   // a scroll cannot hop the disc between rungs as viewport geometry shifts —
   // it moves only when its corner genuinely stops fitting.
   let lastCorner: ReturnType<typeof placeButton>['corner'] | null = null;
-  // The disc's exact offset from the field's BOTTOM-left at the last full
-  // placement. Bottom-anchored on purpose: composers grow upward as the draft
-  // wraps — the top edge moves, the send row does not — so a bottom offset
-  // stays glued through both scrolling and growth.
+  let lastVisible = false;
+  let lastSlot = 'hidden';
+  // The disc's exact offset from the composer SHELL's bottom-left at the last
+  // full placement. The editable itself may scroll or be much taller than the
+  // clipped composer; tying movement to it is what pulled the icon into text.
   let lastOffset: { dx: number; dy: number } | null = null;
   // The scroll glide: a rAF loop alive only while scroll events stream in.
   let scrollRaf = 0;
   let scrollSettle: ReturnType<typeof setTimeout> | undefined;
 
   /**
-   * A user-dragged pin beats every rule. The point is the field's bottom-right
-   * plus the stored offset, clamped on-screen — the user put it there, so the
-   * only correction we ever apply is "stay visible".
+   * Reconstruct a user-dragged pin relative to the composer shell. `placeButton`
+   * accepts it when safe and otherwise reprojects it to the nearest valid
+   * composer slot after resize, zoom, reload, or a host layout change.
    */
-  function pinnedPoint(box: DOMRect): { top: number; left: number } | null {
+  function pinnedPoint(): { top: number; left: number } | null {
+    if (!field) return null;
     const pin = options.pinnedOffset();
     if (!pin) return null;
     const size = options.buttonSize;
+    const visualField = visualEditorRoot(field);
+    const box = composerShell(
+      visualField,
+      visualField.getBoundingClientRect(),
+    ).getBoundingClientRect();
     return {
       top: Math.min(
         Math.max(0, box.bottom + pin.dy),
-        globalThis.innerHeight - size,
+        Math.max(0, globalThis.innerHeight - size),
       ),
       left: Math.min(
         Math.max(0, box.right + pin.dx),
-        globalThis.innerWidth - size,
+        Math.max(0, globalThis.innerWidth - size),
       ),
     };
+  }
+
+  function rememberPlacement(placement: ReturnType<typeof placeButton>): void {
+    const box = placement.anchor.getBoundingClientRect();
+    lastCorner = placement.corner;
+    lastVisible = placement.visible;
+    lastSlot = placement.slot;
+    lastOffset = {
+      dx: placement.point.left - box.left,
+      dy: placement.point.top - box.bottom,
+    };
+    replacementRect = snapshotRect(box);
+    observeGeometry(placement.anchor);
+  }
+
+  function observeGeometry(nextAnchor: Element): void {
+    if (!field || (anchor === nextAnchor && fieldResize)) return;
+    anchor = nextAnchor;
+    fieldResize?.disconnect();
+    fieldResize = new ResizeObserver(() => {
+      reposition();
+    });
+    fieldResize.observe(field);
+    if (nextAnchor !== field) fieldResize.observe(nextAnchor);
+
+    fieldMutation?.disconnect();
+    fieldMutation = new MutationObserver((records) => {
+      const trackedField = field;
+      if (!trackedField?.isConnected) {
+        recoverReplacedField(records);
+        return;
+      }
+      if (
+        !records.some((record) =>
+          mutationAffectsPlacement(record, trackedField),
+        )
+      ) {
+        return;
+      }
+      if (mutationRaf !== 0) return;
+      mutationRaf = requestAnimationFrame(() => {
+        mutationRaf = 0;
+        reposition();
+      });
+    });
+    mutationRoot = composedParentElement(nextAnchor) ?? nextAnchor;
+    const mutationOptions: MutationObserverInit = {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: [
+        'class',
+        'style',
+        'hidden',
+        'aria-hidden',
+        'role',
+        'tabindex',
+        'disabled',
+      ],
+    };
+    fieldMutation.observe(mutationRoot, mutationOptions);
+
+    // MutationObserver does not cross shadow boundaries. Observe every open
+    // root between the editor and its visual shell in addition to the stable
+    // light-DOM parent that can report replacement of the custom element.
+    const observedShadowRoots = new Set<ShadowRoot>();
+    let current: Element | null = field;
+    while (current) {
+      const root = current.getRootNode();
+      if (root instanceof ShadowRoot && !observedShadowRoots.has(root)) {
+        observedShadowRoots.add(root);
+        fieldMutation.observe(root, mutationOptions);
+      }
+      if (current === nextAnchor) break;
+      current = composedParentElement(current);
+    }
   }
 
   function reposition(): void {
     if (!field) return;
 
-    // React apps replace composer nodes wholesale on re-render; a tracked node
-    // that left the DOM would keep a ghost button. Detach — the next focus or
-    // pointer press re-attaches to the replacement.
+    // React apps replace composer nodes wholesale during hydration. Search the
+    // same composed composer for its successor instead of permanently losing
+    // the affordance when focus is not restored.
     if (!field.isConnected) {
-      detach();
+      recoverReplacedField([]);
       return;
     }
 
@@ -143,14 +269,27 @@ export function createFieldTracker(
       detach();
       return;
     }
+    if (options.isPlacementLocked?.()) return;
 
-    const box = field.getBoundingClientRect();
-    const pinned = pinnedPoint(box);
-    if (pinned) {
-      lastCorner = 'bottom-end';
-      lastOffset = { dx: pinned.left - box.left, dy: pinned.top - box.bottom };
-      callbacks.onMove(pinned, 'bottom-end');
-      return;
+    const pinned = pinnedPoint();
+    if (!pinned && lastVisible && lastCorner && lastOffset) {
+      const box = (
+        anchor ??
+        composerShell(
+          visualEditorRoot(field),
+          visualEditorRoot(field).getBoundingClientRect(),
+        )
+      ).getBoundingClientRect();
+      const previous = {
+        top: box.bottom + lastOffset.dy,
+        left: box.left + lastOffset.dx,
+      };
+      if (
+        isPlacementSafe(field, previous, options.buttonSize, options.isOwnNode)
+      ) {
+        callbacks.onMove(previous, lastCorner, false, true, lastSlot);
+        return;
+      }
     }
 
     const placement = placeButton(
@@ -159,45 +298,56 @@ export function createFieldTracker(
       options.buttonSize,
       lastCorner ?? options.preferredCorner(),
       options.isOwnNode,
+      pinned,
+      options.placementMode?.() ?? 'auto',
     );
-    lastCorner = placement.corner;
-    lastOffset = {
-      dx: placement.point.left - box.left,
-      dy: placement.point.top - box.bottom,
-    };
-    callbacks.onMove(placement.point, placement.corner);
+    rememberPlacement(placement);
+    callbacks.onMove(
+      placement.point,
+      placement.corner,
+      false,
+      placement.visible,
+      placement.slot,
+    );
   }
 
   function attach(candidate: HTMLElement): void {
     if (field === candidate) return;
 
+    // Switching composers must release the old observer/listener/timer set
+    // before its handles are overwritten. Keep the visual handoff atomic:
+    // onAttach replaces the old button in the same turn, so no detach flash.
+    releaseField(false);
     field = candidate;
     direction = resolveDirection(candidate);
+    fieldKind = classifyEditor(candidate);
+    fieldTag = candidate.tagName;
     lastCorner = null; // a fresh field earns a fresh walk
 
-    const box = candidate.getBoundingClientRect();
-    const pinned = pinnedPoint(box);
-    const placement = pinned
-      ? { corner: 'bottom-end' as const, point: pinned, forced: false }
-      : placeButton(
-          candidate,
-          direction,
-          options.buttonSize,
-          options.preferredCorner(),
-          options.isOwnNode,
-        );
-    lastCorner = placement.corner;
-    lastOffset = {
-      dx: placement.point.left - box.left,
-      dy: placement.point.top - box.bottom,
-    };
+    const pinned = pinnedPoint();
+    const placement = placeButton(
+      candidate,
+      direction,
+      options.buttonSize,
+      options.preferredCorner(),
+      options.isOwnNode,
+      pinned,
+      options.placementMode?.() ?? 'auto',
+    );
+    rememberPlacement(placement);
 
     callbacks.onAttach({
       element: candidate,
       direction,
       corner: placement.corner,
     });
-    callbacks.onMove(placement.point, placement.corner);
+    callbacks.onMove(
+      placement.point,
+      placement.corner,
+      false,
+      placement.visible,
+      placement.slot,
+    );
     emitDraft();
 
     // Only the ancestors that actually scroll — attaching to every ancestor
@@ -206,19 +356,9 @@ export function createFieldTracker(
     for (const target of scrollTargets) {
       target.addEventListener('scroll', onScroll, { passive: true });
     }
-    // Chat composers grow as the draft wraps — with no scroll event fired, so
-    // without this the disc sits at the field's *old* corner until the poll.
-    fieldResize = new ResizeObserver(() => {
-      reposition();
-    });
-    fieldResize.observe(candidate);
-    pollTimer = setInterval(() => {
-      reposition();
-      emitDraft();
-    }, POLL_MS);
   }
 
-  function detach(): void {
+  function releaseField(notify: boolean): void {
     if (!field) return;
     for (const target of scrollTargets) {
       target.removeEventListener('scroll', onScroll);
@@ -226,18 +366,87 @@ export function createFieldTracker(
     scrollTargets = [];
     fieldResize?.disconnect();
     fieldResize = null;
+    fieldMutation?.disconnect();
+    fieldMutation = null;
+    mutationRoot = null;
+    anchor = null;
+    fieldKind = 'unknown';
+    fieldTag = '';
+    replacementRect = null;
+    clearReplacementSearch();
     lastCorner = null;
+    lastVisible = false;
+    lastSlot = 'hidden';
     lastOffset = null;
+    if (mutationRaf !== 0) {
+      cancelAnimationFrame(mutationRaf);
+      mutationRaf = 0;
+    }
     if (scrollRaf !== 0) {
       cancelAnimationFrame(scrollRaf);
       scrollRaf = 0;
     }
     clearTimeout(scrollSettle);
-    clearInterval(pollTimer);
     clearTimeout(typingTimer);
     clearTimeout(emitTimer);
     field = null;
-    callbacks.onDetach();
+    if (notify) callbacks.onDetach();
+  }
+
+  function detach(): void {
+    releaseField(true);
+  }
+
+  /**
+   * Adopt a replacement editor even when a framework creates the light-DOM
+   * host and its shadow-root editor in separate tasks.
+   *
+   * The previous one-frame retry lost Gemini after slow hydration. A bounded
+   * composed-tree search survives delayed Angular boot without retaining
+   * observers indefinitely when a composer is genuinely removed.
+   */
+  function recoverReplacedField(records: MutationRecord[]): void {
+    const trackedField = field;
+    if (!trackedField || trackedField.isConnected) return;
+    replacementRecords.push(...records);
+    if (replacementDeadline === 0) {
+      replacementDeadline = Date.now() + REPLACEMENT_GRACE_MS;
+    }
+    clearTimeout(replacementTimer);
+
+    const active = deepActiveElement(document);
+    const replacement = qualifies(active)
+      ? active
+      : (findReplacementField(
+          replacementRecords,
+          mutationRoot,
+          trackedField,
+          fieldKind,
+          fieldTag,
+          replacementRect,
+        ) ??
+        options.fallbackField?.() ??
+        null);
+    replacementRecords = [];
+    if (replacement) {
+      attach(replacement);
+      return;
+    }
+    if (Date.now() >= replacementDeadline) {
+      detach();
+      return;
+    }
+    replacementTimer = setTimeout(
+      () => recoverReplacedField([]),
+      REPLACEMENT_RETRY_MS,
+    );
+  }
+
+  function clearReplacementSearch(): void {
+    clearTimeout(replacementTimer);
+    replacementTimer = undefined;
+    replacementDeadline = 0;
+    replacementRecords = [];
   }
 
   function emitDraft(): void {
@@ -248,25 +457,106 @@ export function createFieldTracker(
 
   /* ── listeners ─────────────────────────────────────────────────── */
 
+  /**
+   * Resolve the editable that actually owns focus, not merely the event's
+   * retargeted element.
+   *
+   * Web components can retarget focus to their custom-element host, and rich
+   * editors often dispatch from a nested paragraph/span rather than the
+   * contenteditable root. Search upward first, then through the seed's open
+   * shadow subtree. Never scan the whole document here: on an unfocused Google
+   * SPA that would turn a one-hertz safety check into thousands of DOM reads.
+   */
+  function editableFromSeed(seed: Element | null): HTMLElement | null {
+    if (!seed) return null;
+    if (qualifies(seed)) return seed;
+
+    const owner = closestComposed<HTMLElement>(seed, EDITABLE_SELECTOR);
+    if (owner && qualifies(owner)) return owner;
+
+    if (
+      seed === document.body ||
+      seed === document.documentElement ||
+      !seed.isConnected
+    ) {
+      return null;
+    }
+    for (const candidate of queryComposedAll<HTMLElement>(
+      seed,
+      EDITABLE_SELECTOR,
+    )) {
+      if (qualifies(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  function focusedEditable(event?: Event): HTMLElement | null {
+    const path = event?.composedPath() ?? [];
+    for (const node of path) {
+      if (!(node instanceof Element)) continue;
+      const candidate = editableFromSeed(node);
+      if (candidate) return candidate;
+    }
+
+    const active = editableFromSeed(deepActiveElement(document));
+    if (active) return active;
+
+    const selectionNode = document.getSelection()?.focusNode ?? null;
+    const selectionElement =
+      selectionNode instanceof Element
+        ? selectionNode
+        : (selectionNode?.parentElement ?? null);
+    return editableFromSeed(selectionElement);
+  }
+
+  /**
+   * One tracker-owned timer covers both jobs:
+   *
+   * - while attached, validate geometry and refresh draft state;
+   * - while unattached, acquire an editor that became eligible after focus.
+   *
+   * The second branch is essential for staged hydration. Gemini and Flow can
+   * focus a zero-sized/short-lived editor and only give it its final geometry
+   * later, without dispatching another focus event. Starting the old poll only
+   * after attach made that state impossible to recover from.
+   */
+  function safetyTick(): void {
+    if (!started || options.isSuppressed()) return;
+    const fallback = options.fallbackField?.() ?? null;
+    if (fallback && fallback !== field) {
+      attach(fallback);
+      return;
+    }
+    if (field) {
+      reposition();
+      emitDraft();
+      return;
+    }
+    const candidate = focusedEditable() ?? fallback;
+    if (candidate) attach(candidate);
+  }
+
+  function eventComesFromOwnSurface(event: Event): boolean {
+    return event
+      .composedPath()
+      .some((node) => node instanceof Element && options.isOwnNode(node));
+  }
+
   function onFocusIn(event: Event): void {
-    if (options.isSuppressed()) return;
-    const target =
-      deepActiveElement(document) ?? (event.target as Element | null);
+    if (options.isSuppressed() || eventComesFromOwnSurface(event)) return;
     // Focus on another qualifying composer switches the disc there. Focus on
     // anything else changes nothing — the disc is a fixture of its composer.
-    if (qualifies(target)) attach(target);
+    const candidate = focusedEditable(event);
+    if (candidate) attach(candidate);
   }
 
   // Some editors take focus programmatically or swap their node under a live
   // focus, so focusin alone misses them. A press on a qualifying element is an
   // unambiguous signal — attach right there, no waiting.
   function onPointerDown(event: Event): void {
-    if (options.isSuppressed()) return;
-    const target = event.target as Element | null;
-    const candidate = target?.closest('textarea, input, [contenteditable]');
-    if (candidate && candidate !== field && qualifies(candidate)) {
-      attach(candidate);
-    }
+    if (options.isSuppressed() || eventComesFromOwnSurface(event)) return;
+    const candidate = focusedEditable(event);
+    if (candidate && candidate !== field) attach(candidate);
   }
 
   function onFocusOut(): void {
@@ -280,7 +570,7 @@ export function createFieldTracker(
   }
 
   function onKeyDown(event: KeyboardEvent): void {
-    if (!field?.contains(event.target as Node)) return;
+    if (!eventBelongsToField(event, field)) return;
     // Forward Tab only. Shift+Tab must keep doing what the page expects, and
     // the panel handles its own focus wrap once it is open.
     if (event.key !== 'Tab' || event.shiftKey || event.defaultPrevented) return;
@@ -291,7 +581,7 @@ export function createFieldTracker(
     // Contains, not equals: rich editors (ProseMirror, Lexical) fire input on
     // inner nodes, and a paste that targeted one never matched — so pasted
     // text didn't enable the button until the user typed a character.
-    if (!field?.contains(event.target as Node)) return;
+    if (!eventBelongsToField(event, field)) return;
     emitDraft();
     // Rich editors (ProseMirror) apply a paste AFTER the input event fires, so
     // a single synchronous read sees the old value. Read again shortly after.
@@ -314,19 +604,32 @@ export function createFieldTracker(
    */
   function glide(): void {
     scrollRaf = 0;
-    if (!field || !lastCorner || !lastOffset || !field.isConnected) return;
-    const box = field.getBoundingClientRect();
+    if (
+      !field ||
+      !lastVisible ||
+      !lastCorner ||
+      !lastOffset ||
+      !anchor ||
+      !field.isConnected ||
+      options.isPlacementLocked?.()
+    ) {
+      return;
+    }
+    const box = anchor.getBoundingClientRect();
     // The exact placed offset, re-applied — never re-derived — so the disc is
     // pixel-glued to its slot while the field moves.
     callbacks.onMove(
       { top: box.bottom + lastOffset.dy, left: box.left + lastOffset.dx },
       lastCorner,
+      true,
+      true,
+      lastSlot,
     );
     scrollRaf = requestAnimationFrame(glide);
   }
 
   function onScroll(): void {
-    if (!field) return;
+    if (!field || options.isPlacementLocked?.()) return;
     if (scrollRaf === 0) scrollRaf = requestAnimationFrame(glide);
     clearTimeout(scrollSettle);
     scrollSettle = setTimeout(() => {
@@ -345,6 +648,8 @@ export function createFieldTracker(
 
   return {
     start: () => {
+      if (started) return;
+      started = true;
       document.addEventListener('focusin', onFocusIn, true);
       document.addEventListener('pointerdown', onPointerDown, true);
       document.addEventListener('focusout', onFocusOut, true);
@@ -354,10 +659,15 @@ export function createFieldTracker(
       globalThis.addEventListener('scroll', onScroll, { passive: true });
 
       // A field may already be focused when we load (bfcache, late injection).
-      const active = deepActiveElement(document);
-      if (!options.isSuppressed() && qualifies(active)) attach(active);
+      if (!options.isSuppressed()) {
+        const active = focusedEditable() ?? options.fallbackField?.() ?? null;
+        if (active) attach(active);
+      }
+      safetyTimer = setInterval(safetyTick, POLL_MS);
     },
     stop: () => {
+      if (!started) return;
+      started = false;
       document.removeEventListener('focusin', onFocusIn, true);
       document.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('focusout', onFocusOut, true);
@@ -366,6 +676,8 @@ export function createFieldTracker(
       globalThis.removeEventListener('resize', onResize);
       globalThis.removeEventListener('scroll', onScroll);
       detach();
+      clearInterval(safetyTimer);
+      safetyTimer = undefined;
     },
     reposition,
     current: () => field,
@@ -375,13 +687,151 @@ export function createFieldTracker(
 /** Ancestors that can actually scroll — anything else cannot move the field. */
 function scrollableAncestors(el: Element): EventTarget[] {
   const targets: EventTarget[] = [];
-  let current = el.parentElement;
+  let current = composedParentElement(el);
   while (current && current !== document.body) {
     const style = globalThis.getComputedStyle(current);
     if (/(auto|scroll|overlay)/.test(style.overflowY + style.overflowX)) {
       targets.push(current);
     }
-    current = current.parentElement;
+    current = composedParentElement(current);
   }
   return targets;
+}
+
+const PLACEMENT_CONTROL_SELECTOR =
+  'button, [role="button"], [role="menuitem"], [aria-haspopup]';
+const EDITABLE_SELECTOR =
+  'textarea, input, [contenteditable]:not([contenteditable="false"])';
+
+interface RectSnapshot {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+function snapshotRect(rect: DOMRect): RectSnapshot {
+  return {
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+/**
+ * Framework hydration often removes the focused editor and inserts an
+ * equivalent node without restoring DOM focus. Adopt the nearest qualifying
+ * replacement from the same mutation before detaching, so the button never
+ * flashes or disappears. This is deliberately capability-based rather than a
+ * Gemini selector; React/Lexical/ProseMirror composers all do the same thing.
+ */
+function findReplacementField(
+  records: MutationRecord[],
+  root: Element | null,
+  previous: HTMLElement | null,
+  previousKind: ReturnType<typeof classifyEditor>,
+  previousTag: string,
+  previousRect: RectSnapshot | null,
+): HTMLElement | null {
+  const added = new Set<HTMLElement>();
+  const collect = (node: Node): void => {
+    if (!(node instanceof Element)) return;
+    if (node.matches(EDITABLE_SELECTOR) && qualifies(node)) added.add(node);
+    for (const candidate of queryComposedAll(node, EDITABLE_SELECTOR)) {
+      if (qualifies(candidate)) added.add(candidate);
+    }
+  };
+  for (const record of records) {
+    for (const node of record.addedNodes) collect(node);
+  }
+
+  // Some frameworks mutate an ancestor in a separate observer record. Search
+  // the small composer parent we already observe only when the added nodes did
+  // not contain an eligible editor.
+  if (added.size === 0 && root?.isConnected) {
+    collect(root);
+  }
+
+  let best: { field: HTMLElement; score: number } | null = null;
+  for (const candidate of added) {
+    if (candidate === previous || !candidate.isConnected) continue;
+    const visual = visualEditorRoot(candidate);
+    const candidateRect = snapshotRect(
+      composerShell(
+        visual,
+        visual.getBoundingClientRect(),
+      ).getBoundingClientRect(),
+    );
+
+    let score = 0;
+    if (previousRect) {
+      const gapX = Math.max(
+        previousRect.left - candidateRect.right,
+        candidateRect.left - previousRect.right,
+        0,
+      );
+      const gapY = Math.max(
+        previousRect.top - candidateRect.bottom,
+        candidateRect.top - previousRect.bottom,
+        0,
+      );
+      const edgeGap = Math.hypot(gapX, gapY);
+      const maximumGap = Math.max(240, previousRect.width / 2);
+      if (edgeGap > maximumGap) continue;
+      const previousCenterX = previousRect.left + previousRect.width / 2;
+      const previousCenterY = previousRect.top + previousRect.height / 2;
+      const candidateCenterX = candidateRect.left + candidateRect.width / 2;
+      const candidateCenterY = candidateRect.top + candidateRect.height / 2;
+      score +=
+        edgeGap * 1_000 +
+        Math.hypot(
+          candidateCenterX - previousCenterX,
+          candidateCenterY - previousCenterY,
+        );
+    }
+    if (classifyEditor(candidate) !== previousKind) score += 100_000;
+    if (candidate.tagName !== previousTag) score += 25_000;
+    if (!best || score < best.score) best = { field: candidate, score };
+  }
+  return best?.field ?? null;
+}
+
+/**
+ * Ignore ordinary rich-editor text mutations, but react to controls or shell
+ * structure arriving after focus. Gemini adds its Pro picker this way; without
+ * this handoff it paints directly over PromptAmp's already-selected slot.
+ */
+function mutationAffectsPlacement(
+  record: MutationRecord,
+  field: HTMLElement,
+): boolean {
+  const target = record.target instanceof Element ? record.target : null;
+  if (record.type === 'attributes') {
+    return target !== null && !composedContains(field, target);
+  }
+
+  const containsControl = (node: Node): boolean =>
+    node instanceof Element &&
+    (node.matches(PLACEMENT_CONTROL_SELECTOR) ||
+      queryComposedAll(node, PLACEMENT_CONTROL_SELECTOR).length > 0);
+
+  if ([...record.addedNodes, ...record.removedNodes].some(containsControl)) {
+    return true;
+  }
+
+  // Structural changes outside the editable can alter clipping, row layout,
+  // or the composer shell. Inside the editable they are ordinary typing.
+  return target !== null && !composedContains(field, target);
+}
+
+function eventBelongsToField(event: Event, field: HTMLElement | null): boolean {
+  if (!field) return false;
+  if (event.composedPath().includes(field)) return true;
+  const target = event.target;
+  return target instanceof Element && composedContains(field, target);
 }

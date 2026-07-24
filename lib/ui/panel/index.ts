@@ -29,6 +29,8 @@ export interface PanelVersion {
   text: string;
   /** How this version was produced — shown nowhere, used for the retry notice. */
   adjust?: string;
+  /** Restores the user's editing position after leaving a comparison view. */
+  scrollTop?: number;
 }
 
 /** A profile as the chip menu needs it — just enough to list and pick. */
@@ -43,7 +45,6 @@ export interface PanelCallbacks {
   onRetry: (adjust?: string) => void;
   onCopy: (text: string) => void;
   onDiscard: () => void;
-  onStop: () => void;
   /** A profile was chosen from the header chip — re-enhance in it, and pin it. */
   onProfilePick: (profileId: string) => void;
   /** An output language was chosen from the header chip. '' = same as draft. */
@@ -116,6 +117,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
   // reflow every frame — the stutter on heavy host pages).
   let streamNode: Text | null = null;
   let lastAutoScroll = 0;
+  let controlsActive = false;
 
   // State the header chips + their menus read from.
   let profileOptions: ProfileOption[] = [];
@@ -407,13 +409,15 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
       }
       const width = rect.width;
       const height = rect.height;
-      const left = Math.min(
-        Math.max(8, rect.left + ev.clientX - startX),
-        window.innerWidth - width - 8,
+      const left = clampPanelAxis(
+        rect.left + ev.clientX - startX,
+        width,
+        window.innerWidth,
       );
-      const top = Math.min(
-        Math.max(8, rect.top + ev.clientY - startY),
-        window.innerHeight - height - 8,
+      const top = clampPanelAxis(
+        rect.top + ev.clientY - startY,
+        height,
+        window.innerHeight,
       );
       element.style.left = `${String(Math.round(left))}px`;
       element.style.top = `${String(Math.round(top))}px`;
@@ -462,6 +466,10 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     children: [body],
   });
 
+  body.addEventListener('input', () => {
+    syncCurrentEdit();
+  });
+
   // Polite, not assertive: this narrates progress, it does not interrupt.
   const status = el('div', {
     class: 'pa-sr-only',
@@ -472,21 +480,23 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
 
   const diffPill = el('button', {
     class: 'pa-pill',
-    attrs: { type: 'button', 'aria-pressed': 'false' },
+    attrs: { type: 'button', 'aria-pressed': 'false', disabled: '' },
     text: t('panel.showChanges'),
   });
   const originalPill = el('button', {
     class: 'pa-pill',
-    attrs: { type: 'button', 'aria-pressed': 'false' },
+    attrs: { type: 'button', 'aria-pressed': 'false', disabled: '' },
     text: t('panel.showOriginal'),
   });
 
   diffPill.addEventListener('click', () => {
+    syncCurrentEdit();
     showDiff = !showDiff;
     if (showDiff) showOriginal = false;
     renderBody();
   });
   originalPill.addEventListener('click', () => {
+    syncCurrentEdit();
     showOriginal = !showOriginal;
     if (showOriginal) showDiff = false;
     renderBody();
@@ -552,19 +562,23 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
 
   const acceptBtn = el('button', {
     class: 'pa-primary',
-    attrs: { type: 'button' },
+    attrs: { type: 'button', disabled: '' },
     // "Replace draft", not "Insert below" — inserting below makes no sense in
     // a prompt box.
     text: t('panel.accept'),
   });
   const retryBtn = el('button', {
     class: 'pa-secondary',
-    attrs: { type: 'button' },
+    attrs: { type: 'button', disabled: '' },
     text: t('panel.retry'),
   });
   const copyBtn = el('button', {
     class: 'pa-secondary',
-    attrs: { type: 'button', 'aria-label': t('panel.copy') },
+    attrs: {
+      type: 'button',
+      'aria-label': t('panel.copy'),
+      disabled: '',
+    },
     children: [copyIcon()],
   });
   const discardBtn = el('button', {
@@ -677,7 +691,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     }
     if (meta && event.shiftKey && event.key.toLowerCase() === 'c') {
       event.preventDefault();
-      callbacks.onCopy(currentText());
+      if (!copyBtn.disabled) callbacks.onCopy(currentText());
       return;
     }
     if (event.key === 'Tab') {
@@ -724,10 +738,29 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
   /* ── rendering ─────────────────────────────────────────────────── */
 
   function currentText(): string {
-    // The body is editable, so the live DOM is the source of truth — the user
-    // may have refined it before accepting.
-    if (showDiff || showOriginal) return versions[index]?.text ?? '';
-    return body.innerText;
+    syncCurrentEdit();
+    return versions[index]?.text ?? '';
+  }
+
+  function syncCurrentEdit(): void {
+    const version = versions[index];
+    if (
+      !version ||
+      showDiff ||
+      showOriginal ||
+      body.contentEditable === 'false'
+    ) {
+      return;
+    }
+    version.text = body.innerText;
+    version.scrollTop = bodyWrap.scrollTop;
+    updateTextActions();
+  }
+
+  function updateTextActions(): void {
+    const hasText = (versions[index]?.text ?? '').trim().length > 0;
+    acceptBtn.disabled = !controlsActive || !hasText;
+    copyBtn.disabled = !controlsActive || !hasText;
   }
 
   function renderBody(): void {
@@ -745,13 +778,17 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
 
     if (showOriginal) {
       body.replaceChildren(document.createTextNode(original));
+      bodyWrap.scrollTop = 0;
       return;
     }
     if (showDiff) {
       body.replaceChildren(renderDiff(computeDiff(original, version.text)));
+      bodyWrap.scrollTop = 0;
       return;
     }
     body.replaceChildren(document.createTextNode(version.text));
+    bodyWrap.scrollTop = version.scrollTop ?? 0;
+    updateTextActions();
   }
 
   function renderCarousel(): void {
@@ -762,6 +799,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
   }
 
   function step(delta: number): void {
+    syncCurrentEdit();
     const next = index + delta;
     if (next < 0 || next >= versions.length) return;
     index = next;
@@ -851,7 +889,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
         }
 
         // Branching: a retry adds a version, it never overwrites one.
-        versions.push({ text });
+        versions.push({ text, scrollTop: 0 });
         if (versions.length > MAX_VERSIONS) versions.shift();
         index = versions.length - 1;
 
@@ -1016,6 +1054,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
     destroy: () => {
       if (destroyed) return;
       destroyed = true;
+      clearTimeout(copiedTimer);
       closeChipMenu();
       if ('hidePopover' in element) {
         try {
@@ -1038,15 +1077,11 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
   }
 
   function setControlsEnabled(enabled: boolean): void {
-    for (const control of [
-      acceptBtn,
-      retryBtn,
-      copyBtn,
-      diffPill,
-      originalPill,
-    ]) {
+    controlsActive = enabled;
+    for (const control of [retryBtn, diffPill, originalPill]) {
       control.toggleAttribute('disabled', !enabled);
     }
+    updateTextActions();
   }
 }
 
@@ -1064,6 +1099,16 @@ function deepActive(): Element | null {
 
 function normalise(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+function clampPanelAxis(
+  value: number,
+  surfaceSize: number,
+  viewportSize: number,
+  margin = 8,
+): number {
+  const maximum = Math.max(margin, viewportSize - surfaceSize - margin);
+  return Math.min(Math.max(margin, value), maximum);
 }
 
 /** Fallback display name before the profile list has loaded: "general" → "General". */

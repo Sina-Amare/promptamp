@@ -8,6 +8,7 @@ import {
 import { browser } from '#imports';
 import { insertText } from '../insertion/engine';
 import { readValue } from '../insertion/detect';
+import type { MainWorldEditorResult } from '../insertion/main-world';
 import {
   DECLINE_SENTINEL,
   ENHANCE_PORT,
@@ -41,26 +42,32 @@ export interface SessionDeps {
   field: HTMLElement;
   layer: HTMLElement;
   origin: string;
-  mainWorldInsert: (text: string) => Promise<boolean>;
+  draft?: string;
+  mainWorldEditor?: {
+    read: () => Promise<MainWorldEditorResult>;
+    replace: (text: string) => Promise<MainWorldEditorResult>;
+  };
 }
 
 export interface EnhanceSession {
   start: (adjust?: string) => void;
   stop: () => void;
-  close: () => void;
+  close: (options?: { restoreFocus?: boolean }) => void;
 }
 
 export function createSession(
   deps: SessionDeps,
   callbacks: SessionCallbacks,
 ): EnhanceSession {
-  const draft = readValue(deps.field);
+  const draft = deps.draft ?? readValue(deps.field);
 
   let port: ReturnType<typeof browser.runtime.connect> | null = null;
   let panel: PanelHandle | null = null;
   let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
   let cleanupPosition: (() => void) | undefined;
   let stream: SmoothStream | null = null;
+  let runEpoch = 0;
+  const expectedDisconnects = new WeakSet<object>();
   // Raw text seen so far this run, so a decline (which begins with a bracket no
   // rewrite starts with) can be held back before it ever reaches the panel.
   let rawSoFar = '';
@@ -73,6 +80,7 @@ export function createSession(
   // run must leave the profile chip showing the site's persistent profile,
   // exactly like the Shorter/Longer adjust chips do.
   let structuredOneOff = false;
+  let pendingProfile: { id: string; auto: boolean } | null = null;
 
   /**
    * Populate the panel's profile + language chips. One round trip, once — the
@@ -117,7 +125,6 @@ export function createSession(
         void navigator.clipboard.writeText(text);
       },
       onDiscard: close,
-      onStop: stop,
       // A profile chosen from the chip: pin it for this site (so it sticks) and
       // re-run in it now. `profileId` on the run wins the race against the pin.
       onProfilePick: (profileId) => {
@@ -164,6 +171,9 @@ export function createSession(
     });
 
     loadChips(panel);
+    if (pendingProfile) {
+      panel.setProfile(pendingProfile.id, pendingProfile.auto);
+    }
     deps.layer.append(panel.element);
 
     if ('showPopover' in panel.element) {
@@ -222,11 +232,11 @@ export function createSession(
           // live on Grok with a long draft). Whatever the middleware decided,
           // the panel ends up fully on screen.
           const rect = panel.element.getBoundingClientRect();
-          const maxLeft = window.innerWidth - rect.width - 8;
-          const maxTop = window.innerHeight - rect.height - 8;
+          const left = clampAxis(x, rect.width, window.innerWidth);
+          const top = clampAxis(y, rect.height, window.innerHeight);
           Object.assign(panel.element.style, {
-            left: `${String(Math.round(Math.min(Math.max(8, x), maxLeft)))}px`,
-            top: `${String(Math.round(Math.min(Math.max(8, y), maxTop)))}px`,
+            left: `${String(Math.round(left))}px`,
+            top: `${String(Math.round(top))}px`,
           });
         });
       },
@@ -248,8 +258,12 @@ export function createSession(
   function run(opts: RunOptions = {}): void {
     if (closed) return;
     stopPort();
+    stream?.cancel();
+    stream = null;
     rawSoFar = '';
     firstChunkSeen = false;
+    const epoch = ++runEpoch;
+    let settled = false;
     console.info('[PromptAmp] enhance start', {
       origin: deps.origin,
       profileId: opts.profileId ?? 'auto',
@@ -261,12 +275,14 @@ export function createSession(
     // loading state.
     clearTimeout(skeletonTimer);
     skeletonTimer = setTimeout(() => {
-      if (closed) return;
+      if (closed || epoch !== runEpoch) return;
       ensurePanel().showLoading();
     }, SKELETON_DELAY_MS);
 
+    let runPort: ReturnType<typeof browser.runtime.connect>;
     try {
-      port = browser.runtime.connect({ name: ENHANCE_PORT });
+      runPort = browser.runtime.connect({ name: ENHANCE_PORT });
+      port = runPort;
     } catch {
       // The extension was reloaded out from under this tab, so the runtime is
       // gone. Say so plainly instead of throwing into the page's console.
@@ -275,7 +291,8 @@ export function createSession(
       return;
     }
 
-    port.onMessage.addListener((raw: unknown) => {
+    runPort.onMessage.addListener((raw: unknown) => {
+      if (closed || epoch !== runEpoch || port !== runPort || settled) return;
       const message = raw as EnhanceServerMessage;
 
       switch (message.type) {
@@ -284,7 +301,8 @@ export function createSession(
           if (structuredOneOff) {
             structuredOneOff = false;
           } else {
-            ensurePanel().setProfile(message.profileId, message.auto);
+            pendingProfile = { id: message.profileId, auto: message.auto };
+            panel?.setProfile(message.profileId, message.auto);
           }
           break;
 
@@ -328,6 +346,7 @@ export function createSession(
           break;
 
         case 'done':
+          settled = true;
           clearTimeout(skeletonTimer);
           console.info(
             '[PromptAmp] done',
@@ -344,6 +363,7 @@ export function createSession(
           // a fabricated "I need help" prompt.
           if (message.result.declined) {
             ensurePanel().showDecline();
+            disconnectPort(runPort);
             break;
           }
           ensurePanel().showResult(message.result.text, draft);
@@ -357,9 +377,11 @@ export function createSession(
               }),
             );
           }
+          disconnectPort(runPort);
           break;
 
         case 'error':
+          settled = true;
           clearTimeout(skeletonTimer);
           console.warn(
             '[PromptAmp] error',
@@ -369,21 +391,44 @@ export function createSession(
           stream?.cancel();
           stream = null;
           handleError(message.error);
+          disconnectPort(runPort);
           break;
       }
     });
 
-    port.onDisconnect.addListener(() => {
-      port = null;
+    runPort.onDisconnect.addListener(() => {
+      if (port === runPort) port = null;
+      if (
+        expectedDisconnects.has(runPort) ||
+        settled ||
+        closed ||
+        epoch !== runEpoch
+      ) {
+        return;
+      }
+      settled = true;
+      clearTimeout(skeletonTimer);
+      stream?.cancel();
+      stream = null;
+      handleError({
+        kind: 'unknown',
+        message: t('error.interrupted'),
+        remedy: t('error.interruptedRemedy'),
+      });
     });
 
-    port.postMessage({
-      type: 'start',
-      draft,
-      origin: deps.origin,
-      ...(opts.adjust ? { adjust: opts.adjust } : {}),
-      ...(opts.profileId ? { profileId: opts.profileId } : {}),
-    });
+    try {
+      runPort.postMessage({
+        type: 'start',
+        draft,
+        origin: deps.origin,
+        ...(opts.adjust ? { adjust: opts.adjust } : {}),
+        ...(opts.profileId ? { profileId: opts.profileId } : {}),
+      });
+    } catch {
+      disconnectPort(runPort);
+      handleError({ kind: 'unknown', message: t('error.reloaded') });
+    }
   }
 
   function handleError(error: SafeError): void {
@@ -398,8 +443,17 @@ export function createSession(
   }
 
   async function accept(text: string): Promise<void> {
+    if (!text.trim()) {
+      ensurePanel().showError({
+        kind: 'unknown',
+        message: t('error.emptyResult'),
+      });
+      return;
+    }
     const outcome = await insertText(deps.field, text, {
-      mainWorldInsert: deps.mainWorldInsert,
+      ...(deps.mainWorldEditor
+        ? { mainWorldEditor: deps.mainWorldEditor }
+        : {}),
     });
 
     if (!outcome.ok) {
@@ -422,20 +476,33 @@ export function createSession(
     close();
   }
 
+  function disconnectPort(
+    target: ReturnType<typeof browser.runtime.connect>,
+  ): void {
+    expectedDisconnects.add(target);
+    if (port === target) port = null;
+    try {
+      target.disconnect();
+    } catch {
+      // Already disconnected.
+    }
+  }
+
   function stopPort(): void {
     clearTimeout(skeletonTimer);
-    port?.disconnect();
-    port = null;
+    const current = port;
+    if (current) disconnectPort(current);
   }
 
   function stop(): void {
-    stopPort();
     callbacks.onStateChange('idle');
+    close();
   }
 
-  function close(): void {
+  function close(options: { restoreFocus?: boolean } = {}): void {
     if (closed) return;
     closed = true;
+    runEpoch++;
     stream?.cancel();
     stream = null;
     stopPort();
@@ -444,7 +511,7 @@ export function createSession(
     panel = null;
     // Focus returns to the field with its selection intact — the panel is not
     // a place to be stranded.
-    deps.field.focus();
+    if (options.restoreFocus !== false) deps.field.focus();
     callbacks.onClosed();
   }
 
@@ -457,4 +524,15 @@ export function createSession(
     stop,
     close,
   };
+}
+
+/** Clamp without inverting when the surface is wider/taller than the viewport. */
+function clampAxis(
+  value: number,
+  surfaceSize: number,
+  viewportSize: number,
+  margin = 8,
+): number {
+  const maximum = Math.max(margin, viewportSize - surfaceSize - margin);
+  return Math.min(Math.max(margin, value), maximum);
 }

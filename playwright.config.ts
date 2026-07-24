@@ -7,6 +7,9 @@ import { defineConfig } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  // Store-listing screenshots are generated only by `pnpm shots`; ordinary
+  // validation must never rewrite checked-in marketing artifacts.
+  testIgnore: ['**/screenshots.spec.ts'],
   fullyParallel: false, // one persistent browser context, shared extension state
   workers: 1,
   forbidOnly: !!process.env.CI,

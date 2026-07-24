@@ -9,6 +9,8 @@
  * survives that.
  */
 
+import { closestComposed } from '../dom/composed';
+
 export type EditorKind =
   | 'textarea'
   | 'input'
@@ -28,6 +30,14 @@ export interface DetectedField {
   /** React and friends intercept value writes; tier 1 needs the native setter. */
   reactControlled: boolean;
   /** Resolved writing direction — decides which corner the button anchors to. */
+  direction: 'ltr' | 'rtl';
+}
+
+/** Focus/insertion identity kept separate from the box users can actually see. */
+export interface EditorTarget {
+  focusElement: HTMLElement;
+  anchorElement: HTMLElement;
+  kind: EditorKind;
   direction: 'ltr' | 'rtl';
 }
 
@@ -75,6 +85,22 @@ export function isEditable(el: Element | null): el is HTMLElement {
 }
 
 /**
+ * The visible editor box for geometry and lightweight draft previews.
+ *
+ * Monaco focuses a tiny hidden textarea, while the actual composer is the
+ * surrounding `.monaco-editor`. Keeping the focus element and visual element
+ * separate lets keyboard/insertion logic target the former and placement/size
+ * logic target the latter.
+ */
+export function visualEditorRoot(el: Element): HTMLElement {
+  const codeRoot = closestComposed<HTMLElement>(
+    el,
+    '.monaco-editor, .cm-editor',
+  );
+  return codeRoot ?? (el as HTMLElement);
+}
+
+/**
  * `document.activeElement` stops at a shadow host, so a field inside an open
  * shadow root reports as the host element. Walk down until we reach the real
  * one. Closed roots are opaque by design and simply won't be found.
@@ -115,11 +141,15 @@ export function isReactControlled(el: Element): boolean {
  * site's markup.
  */
 export function classifyEditor(el: HTMLElement): EditorKind {
+  const inRoot = (selector: string): boolean =>
+    el.matches(selector) || closestComposed(el, selector) !== null;
+
+  // Code editors focus nested contenteditables/hidden textareas, so their
+  // framework fingerprint must win before native element classification.
+  if (inRoot('.monaco-editor')) return 'monaco';
+  if (inRoot('.cm-content') || inRoot('.cm-editor')) return 'codemirror';
   if (isTextArea(el)) return 'textarea';
   if (isEditableInput(el)) return 'input';
-
-  const inRoot = (selector: string): boolean =>
-    el.matches(selector) || el.closest(selector) !== null;
 
   if (inRoot('.ProseMirror')) return 'prosemirror';
   if (el.hasAttribute('data-lexical-editor') || inRoot('[data-lexical-editor]'))
@@ -129,9 +159,6 @@ export function classifyEditor(el: HTMLElement): EditorKind {
     return 'slate';
   if (inRoot('.DraftEditor-root') || inRoot('[data-contents="true"]'))
     return 'draftjs';
-  if (inRoot('.cm-content') || inRoot('.cm-editor')) return 'codemirror';
-  if (inRoot('.monaco-editor')) return 'monaco';
-
   if (isContentEditable(el)) return 'contenteditable';
   return 'unknown';
 }
@@ -145,7 +172,9 @@ export function classifyEditor(el: HTMLElement): EditorKind {
  * from exactly this kind of read, so avoiding one is worth the branch.
  */
 export function resolveDirection(el: HTMLElement): 'ltr' | 'rtl' {
-  const explicit = el.closest('[dir]')?.getAttribute('dir')?.toLowerCase();
+  const explicit = closestComposed(el, '[dir]')
+    ?.getAttribute('dir')
+    ?.toLowerCase();
   if (explicit === 'rtl') return 'rtl';
   if (explicit === 'ltr') return 'ltr';
   return globalThis.getComputedStyle(el).direction === 'rtl' ? 'rtl' : 'ltr';
@@ -160,8 +189,26 @@ export function describeField(el: HTMLElement): DetectedField {
   };
 }
 
+export function resolveEditorTarget(el: HTMLElement): EditorTarget {
+  return {
+    focusElement: el,
+    anchorElement: visualEditorRoot(el),
+    kind: classifyEditor(el),
+    direction: resolveDirection(el),
+  };
+}
+
 /** Read the current text, whichever kind of field it is. */
 export function readValue(el: HTMLElement): string {
+  const kind = classifyEditor(el);
+  if (kind === 'monaco') {
+    // Preview only. The exact draft is read from Monaco's model through the
+    // MAIN-world bridge before enhancement.
+    return (
+      visualEditorRoot(el).querySelector<HTMLElement>('.view-lines')
+        ?.innerText ?? ''
+    );
+  }
   if (isTextArea(el) || isEditableInput(el)) return el.value;
   return el.innerText;
 }
@@ -172,9 +219,9 @@ export function readValue(el: HTMLElement): string {
  */
 export function isOptedOut(el: Element): boolean {
   return (
-    el.closest('[data-promptamp="false"]') !== null ||
-    el.closest('[data-gramm="false"]') !== null ||
-    el.closest('[data-enable-grammarly="false"]') !== null
+    closestComposed(el, '[data-promptamp="false"]') !== null ||
+    closestComposed(el, '[data-gramm="false"]') !== null ||
+    closestComposed(el, '[data-enable-grammarly="false"]') !== null
   );
 }
 
@@ -184,16 +231,16 @@ export const MIN_FIELD_WIDTH = 200;
 
 /**
  * The wide-single-line exception, ground-truthed on gemini.google.com: its
- * composer's true editable is a 445×24 line inside a padded pill, so the
- * 40px height floor silently rejected the most-visited AI site there is (and
- * Google's Flow, built the same way). A 24px-tall line that is ALSO ≥320px
- * wide is unmistakably a real composer, not a chip or a tag input.
+ * composer's true editable is a short line inside a padded pill, so the 40px
+ * height floor silently rejected the most-visited AI site there is. Flow can
+ * expose the same capability as a native text input. Requiring a substantial
+ * width keeps compact form controls, chips, and tag inputs out.
  */
-export const MIN_LINE_HEIGHT = 20;
+export const MIN_LINE_HEIGHT = 16;
 export const MIN_LINE_WIDTH = 320;
 
 export function isLargeEnough(el: Element): boolean {
-  const rect = el.getBoundingClientRect();
+  const rect = visualEditorRoot(el).getBoundingClientRect();
   if (rect.height >= MIN_FIELD_HEIGHT && rect.width >= MIN_FIELD_WIDTH) {
     return true;
   }
@@ -209,16 +256,22 @@ export function isLocked(el: Element): boolean {
   if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) {
     if (el.readOnly || el.disabled) return true;
   }
-  return el.closest('[contenteditable="false"]') !== null;
+  return closestComposed(el, '[contenteditable="false"]') !== null;
 }
 
 /** Every gate from UX-SPEC §1.1, in the order that fails cheapest first. */
 export function qualifies(el: Element | null): el is HTMLElement {
   if (!isEditable(el)) return false;
-  // Single-line inputs are excluded: a rewrite affordance on a one-line box is
-  // noise, and `input` is only reached here when it is not a blocked type.
-  if (isEditableInput(el)) return false;
   if (isLocked(el)) return false;
   if (isOptedOut(el)) return false;
+  if (isEditableInput(el)) {
+    // Google Flow and a growing number of compact AI composers use a native
+    // text input for their prompt line. The insertion engine already supports
+    // these exactly; the old blanket exclusion made detection impossible.
+    // Keep the affordance off ordinary form fields by accepting only a wide,
+    // visibly rendered prompt line.
+    const rect = visualEditorRoot(el).getBoundingClientRect();
+    return rect.width >= MIN_LINE_WIDTH && rect.height >= MIN_LINE_HEIGHT;
+  }
   return isLargeEnough(el);
 }

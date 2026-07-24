@@ -6,7 +6,6 @@ import {
   safeErrorForEnhancement,
   toSafeError,
 } from '../lib/enhance/run';
-import { mainWorldInsertFunction } from '../lib/insertion/main-world';
 import {
   ENHANCE_PORT,
   TRIGGER_ENHANCE,
@@ -165,12 +164,10 @@ export default defineBackground(() => {
       // Return the promise itself. WXT ships the webextension-polyfill, whose
       // contract is promise-based — the `return true` + sendResponse callback
       // style silently never delivers a reply through it.
-      return handle(message, sender.tab?.id, sender.frameId).catch(
-        (error: unknown) => {
-          console.error('[promptamp]', error);
-          return undefined;
-        },
-      );
+      return handle(message).catch((error: unknown) => {
+        console.error('[promptamp]', error);
+        return undefined;
+      });
     },
   );
 });
@@ -208,15 +205,8 @@ function isRequest(value: unknown): value is Request {
   );
 }
 
-async function handle(
-  message: Request,
-  tabId: number | undefined,
-  frameId: number | undefined,
-): Promise<unknown> {
+async function handle(message: Request): Promise<unknown> {
   switch (message.type) {
-    case 'insert:mainWorld':
-      return insertInMainWorld(message.text, tabId, frameId);
-
     case 'settings:get':
       return getSettings();
 
@@ -365,37 +355,5 @@ async function handle(
 
     case 'history:export':
       return JSON.stringify(await getHistory(), null, 2);
-  }
-}
-
-/**
- * Runs the tier-4 adapter in the page's own JavaScript world.
- *
- * `world: 'MAIN'` is the only way to touch a Monaco or CodeMirror instance
- * API, and only the worker can request it — a content script is permanently
- * isolated. `activeTab` covers the permission, so this never widens what the
- * extension can reach.
- */
-async function insertInMainWorld(
-  text: string,
-  tabId: number | undefined,
-  frameId: number | undefined,
-): Promise<boolean> {
-  if (tabId === undefined) return false;
-  try {
-    const results = await browser.scripting.executeScript({
-      target: {
-        tabId,
-        ...(frameId === undefined ? {} : { frameIds: [frameId] }),
-      },
-      world: 'MAIN',
-      func: mainWorldInsertFunction,
-      args: [text],
-    });
-    return results.some((entry) => entry.result === true);
-  } catch {
-    // Injection refused (a restricted page, or the tab navigated away). The
-    // engine falls through to the next tier.
-    return false;
   }
 }

@@ -89,6 +89,24 @@
           <label id="cm-label">CodeMirror 6</label>
           <div id="codemirror-host" data-testid="codemirror-host"></div>
         </article>
+
+        <article>
+          <label id="monaco-label">Monaco model bridge</label>
+          <div
+            id="monaco-host"
+            class="monaco-editor"
+            data-testid="monaco-host"
+            role="code"
+            aria-labelledby="monaco-label"
+          >
+            <div class="view-lines" aria-hidden="true"></div>
+            <textarea
+              class="inputarea"
+              data-testid="monaco-input"
+              aria-label="Monaco editor input"
+            ></textarea>
+          </div>
+        </article>
       </section>
 
       <!-- ── Qualification gates ────────────────────────────────── -->
@@ -177,18 +195,20 @@
             >ChatGPT-style (internal scroll on long text)</label
           >
           <!-- True repro of chatgpt.com's ground-truth DOM: the editable's own
-               rect extends DOWN over the control row (padding-bottom), so its
-               bottom-right corner sits ON the send button — the exact geometry
-               that defeated every field-based placement. -->
+               rect extends far below the rounded/clipped composer. Its
+               bottom-right can be near the page edge even though the visible
+               text ends above the action row. -->
           <div class="chat-shell gpt-shell" data-testid="gpt-shell">
-            <div
-              class="chat-editable gpt-scroll"
-              data-testid="gpt-editable"
-              contenteditable="true"
-              role="textbox"
-              aria-multiline="true"
-              aria-labelledby="gpt-label"
-            ></div>
+            <div class="gpt-text-viewport">
+              <div
+                class="chat-editable gpt-scroll"
+                data-testid="gpt-editable"
+                contenteditable="true"
+                role="textbox"
+                aria-multiline="true"
+                aria-labelledby="gpt-label"
+              ></div>
+            </div>
             <div class="chat-row gpt-row">
               <button type="button" class="chat-btn">+</button>
               <span class="chat-spacer"></span>
@@ -203,19 +223,18 @@
           <label id="gemini-label"
             >Gemini-style (24px-tall line in a padded pill)</label
           >
-          <!-- Ground truth from gemini.google.com: EDITABLE [445x24] inside a
-               padded 80px pill, custom element wrapper, no send button. The
-               plain 40px height gate silently rejected this. -->
+          <!-- Gemini keeps its Quill editable inside an open rich-textarea
+               shadow tree while model/mic controls remain in the light DOM.
+               This boundary is essential to the late-Pro regression. -->
           <div class="chat-pill gemini-pill" data-testid="gemini-shell">
             <button type="button" class="chat-btn">+</button>
-            <div
-              class="gemini-line"
-              data-testid="gemini-editable"
-              contenteditable="true"
-              role="textbox"
-              aria-labelledby="gemini-label"
-            ></div>
-            <button type="button" class="chat-btn">🎤</button>
+            <rich-textarea
+              class="gemini-rich-textarea"
+              data-testid="gemini-host"
+            ></rich-textarea>
+            <button type="button" class="chat-btn" data-testid="gemini-mic">
+              🎤
+            </button>
           </div>
         </article>
 

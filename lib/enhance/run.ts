@@ -44,6 +44,8 @@ export interface RunContext {
   onReset?: () => void;
   /** Override the idle-stream timeout (tests only; production uses the default). */
   idleTimeoutMs?: number;
+  /** Override the non-streaming total timeout (tests only). */
+  totalTimeoutMs?: number;
 }
 
 export async function runEnhancement(
@@ -81,110 +83,109 @@ export async function runEnhancement(
   );
 
   const attempts: Attempt[] = [];
-
-  // A stalled stream must never hang the panel forever. This is an *idle*
-  // timeout, not a hard cap: every streamed token re-arms it, so a slow but
-  // progressing model is never cut off, while a provider that accepts the
-  // request and then goes silent (seen with some Gemini/OpenAI-compat streams)
-  // fails cleanly with an actionable message instead of a spinner that never
-  // resolves. It also fires before the first token, covering an outright hang.
   const idleMs = context.idleTimeoutMs ?? IDLE_TIMEOUT_MS;
-  const controller = new AbortController();
-  let timedOut = false;
-  let idleTimer: ReturnType<typeof setTimeout> | undefined;
-  const armIdle = (): void => {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-      timedOut = true;
+  const totalMs = context.totalTimeoutMs ?? TOTAL_TIMEOUT_MS;
+  const streaming = context.onChunk !== undefined;
+
+  for (const [index, connection] of connections.entries()) {
+    const isLast = index === connections.length - 1;
+    // Timeout and abort state belong to one connection. Once a stalled fetch
+    // is aborted, the next connection receives a fresh signal and can safely
+    // take over instead of inheriting a permanently-aborted controller.
+    const controller = new AbortController();
+    let timedOut = false;
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const armDeadline = (delayMs = streaming ? idleMs : totalMs): void => {
+      clearTimeout(deadlineTimer);
+      deadlineTimer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, delayMs);
+    };
+    const onUserAbort = (): void => {
       controller.abort();
-    }, idleMs);
-  };
-  const onUserAbort = (): void => {
-    controller.abort();
-  };
-  context.signal.addEventListener('abort', onUserAbort, { once: true });
-  // A signal already aborted before this listener registered would never fire
-  // it (the event has passed), so mirror that state now — otherwise a cancel
-  // that lands during the pre-flight awaits would be silently lost.
-  if (context.signal.aborted) controller.abort();
-  // Forward each token, and treat its arrival as progress.
-  const onChunk = context.onChunk
-    ? (delta: string): void => {
-        armIdle();
-        context.onChunk?.(delta);
+    };
+    context.signal.addEventListener('abort', onUserAbort, { once: true });
+    if (context.signal.aborted) controller.abort();
+    armDeadline();
+
+    try {
+      const response = await chat(connection.providerId, {
+        cred: connection,
+        system,
+        user,
+        maxTokens,
+        signal: controller.signal,
+        // Waiting out a long Retry-After only makes sense when there is
+        // nothing behind this connection to try instead.
+        maxRetries: isLast ? MAX_RETRIES : 0,
+        onActivity: () => {
+          if (streaming) armDeadline(idleMs);
+        },
+        onRetryWait: (delayMs) => {
+          // A provider-declared wait is progress, not silence. Give it the
+          // requested delay plus a full response window afterwards.
+          armDeadline(delayMs + (streaming ? idleMs : totalMs));
+        },
+        ...(context.onChunk
+          ? {
+              onChunk: (delta: string) => {
+                armDeadline(idleMs);
+                context.onChunk?.(delta);
+              },
+            }
+          : {}),
+      });
+
+      return await finish({
+        request,
+        profileId: profile.id,
+        connection,
+        response,
+        ...(attempts.length > 0
+          ? {
+              fellBackFrom: {
+                label: attempts[0]!.label,
+                kind: attempts[0]!.kind,
+                message: attempts[0]!.message,
+              },
+            }
+          : {}),
+      });
+    } catch (err) {
+      const safe = timedOut
+        ? toSafeError(
+            errorFor(
+              'network',
+              'The model didn’t respond in time. Try again, or pick a faster model.',
+            ),
+          )
+        : toSafeError(err);
+      console.warn(
+        '[PromptAmp] ✗',
+        connection.label,
+        connection.model,
+        timedOut ? 'TIMEOUT' : safe.kind,
+        safe.message,
+      );
+      attempts.push({
+        connectionId: connection.id,
+        label: connection.label,
+        kind: safe.kind,
+        message: safe.message,
+      });
+
+      // A draft-level or user-level failure repeats identically everywhere;
+      // handing it down the chain would just spend money to fail again.
+      if (!handsOver(safe.kind) || isLast) {
+        throw new ChainFailure(chainError(safe, attempts));
       }
-    : undefined;
 
-  try {
-    for (const [index, connection] of connections.entries()) {
-      const isLast = index === connections.length - 1;
-      armIdle();
-
-      try {
-        const response = await chat(connection.providerId, {
-          cred: connection,
-          system,
-          user,
-          maxTokens,
-          signal: controller.signal,
-          // Waiting out a long Retry-After only makes sense when there is
-          // nothing behind this connection to try instead.
-          maxRetries: isLast ? MAX_RETRIES : 0,
-          ...(onChunk ? { onChunk } : {}),
-        });
-
-        return await finish({
-          request,
-          profileId: profile.id,
-          connection,
-          response,
-          ...(attempts.length > 0
-            ? {
-                fellBackFrom: {
-                  label: attempts[0]!.label,
-                  kind: attempts[0]!.kind,
-                  message: attempts[0]!.message,
-                },
-              }
-            : {}),
-        });
-      } catch (err) {
-        // A timeout is global — the controller is now aborted, so the next
-        // connection could not run anyway. Report it and stop, never fall back.
-        const safe = timedOut
-          ? toSafeError(
-              errorFor(
-                'network',
-                'The model didn’t respond in time. Try again, or pick a faster model.',
-              ),
-            )
-          : toSafeError(err);
-        console.warn(
-          '[PromptAmp] ✗',
-          connection.label,
-          connection.model,
-          timedOut ? 'TIMEOUT' : safe.kind,
-          safe.message,
-        );
-        attempts.push({
-          connectionId: connection.id,
-          label: connection.label,
-          kind: safe.kind,
-          message: safe.message,
-        });
-
-        // A draft-level or user-level failure repeats identically everywhere;
-        // handing it down the chain would just spend money to fail again.
-        if (timedOut || !handsOver(safe.kind) || isLast) {
-          throw new ChainFailure(chainError(safe, attempts));
-        }
-
-        context.onReset?.();
-      }
+      context.onReset?.();
+    } finally {
+      clearTimeout(deadlineTimer);
+      context.signal.removeEventListener('abort', onUserAbort);
     }
-  } finally {
-    clearTimeout(idleTimer);
-    context.signal.removeEventListener('abort', onUserAbort);
   }
 
   // Unreachable: the loop either returns or throws. Kept so a future edit that
@@ -198,6 +199,9 @@ export async function runEnhancement(
  * model that keeps producing is never interrupted.
  */
 const IDLE_TIMEOUT_MS = 45_000;
+
+/** Non-streaming has no activity signal, so it gets a clear total deadline. */
+const TOTAL_TIMEOUT_MS = 90_000;
 
 /**
  * Carries an already-built `SafeError` through the throw, so the chain summary

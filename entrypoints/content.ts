@@ -1,13 +1,25 @@
 import { browser, defineContentScript } from '#imports';
 import { sendMessage } from '../lib/messaging/client';
 import { TRIGGER_ENHANCE } from '../lib/messaging/protocol';
+import {
+  readValue,
+  resolveEditorTarget,
+  visualEditorRoot,
+} from '../lib/insertion/detect';
+import { requestMainWorldEditor } from '../lib/insertion/bridge';
 import { createButton, type ButtonHandle } from '../lib/ui/button';
 import { BUTTON_CSS } from '../lib/ui/button/styles';
 import { createShadowHost, el } from '../lib/ui/host';
 import { PANEL_CSS } from '../lib/ui/panel/styles';
 import { createSession, type EnhanceSession } from '../lib/ui/session';
 import { createFieldTracker } from '../lib/ui/tracker';
+import { composerShell } from '../lib/ui/position';
+import {
+  findCompatibilityComposer,
+  placementModeForLocation,
+} from '../lib/ui/compatibility';
 import type { ButtonCorner } from '../lib/storage/schemas';
+import { closestComposed } from '../lib/dom/composed';
 
 /**
  * The injected surface.
@@ -95,7 +107,7 @@ export default defineContentScript({
      * the field or anything the page authored, so principle 5 still holds.
      */
     function reparentForModal(field: Element): void {
-      const dialog = field.closest('dialog');
+      const dialog = closestComposed(field, 'dialog');
       const target =
         dialog && dialog.hasAttribute('open') && dialog.matches(':modal')
           ? dialog
@@ -112,25 +124,44 @@ export default defineContentScript({
     let session: EnhanceSession | null = null;
     let currentCorner: ButtonCorner | null = null;
 
-    /**
-     * Tier 4 needs the page's own JavaScript world, which a content script
-     * cannot reach — so it is asked for via the worker's scripting API.
-     */
-    const mainWorldInsert = async (text: string): Promise<boolean> => {
-      try {
-        return await sendMessage({
-          type: 'insert:mainWorld',
-          text,
-        });
-      } catch {
-        return false;
-      }
-    };
-
-    function beginEnhance(field: HTMLElement): void {
+    let beginEpoch = 0;
+    async function beginEnhance(field: HTMLElement): Promise<void> {
+      const epoch = ++beginEpoch;
       session?.close();
+      button?.setState('loading');
+      const target = resolveEditorTarget(field);
+      const isModelEditor =
+        target.kind === 'monaco' || target.kind === 'codemirror';
+      const modelRead = isModelEditor
+        ? await requestMainWorldEditor('read')
+        : null;
+      if (
+        epoch !== beginEpoch ||
+        tracker.current() !== field ||
+        !field.isConnected
+      ) {
+        return;
+      }
+      const draft =
+        modelRead?.ok && typeof modelRead.value === 'string'
+          ? modelRead.value
+          : readValue(field);
       session = createSession(
-        { field, layer, origin: location.origin, mainWorldInsert },
+        {
+          field,
+          layer,
+          origin: location.origin,
+          draft,
+          ...(isModelEditor
+            ? {
+                mainWorldEditor: {
+                  read: () => requestMainWorldEditor('read'),
+                  replace: (text: string) =>
+                    requestMainWorldEditor('replace', text),
+                },
+              }
+            : {}),
+        },
         {
           onStateChange: (state) => {
             if (state === 'loading') button?.setState('loading');
@@ -150,35 +181,67 @@ export default defineContentScript({
     // The user's dragged spot for this site, live-updated on drop so the fix
     // applies instantly; persisted so it survives reloads.
     let pin = suppression.pin;
+    let manualDrag = false;
+    const placementMode = placementModeForLocation(
+      location.hostname,
+      location.pathname,
+    );
 
     const tracker = createFieldTracker(
       {
         onAttach: (field) => {
+          // A preview belongs to the composer that produced it. Switching
+          // fields closes the old session without pulling focus back from the
+          // newly selected composer.
+          session?.close({ restoreFocus: false });
           // The field may live inside a modal dialog opened after us.
           reparentForModal(field.element);
           button?.destroy();
           button = createButton({
             onActivate: () => {
-              beginEnhance(field.element);
+              void beginEnhance(field.element);
             },
             onStop: () => session?.stop(),
+            canResetPosition: () => pin !== null,
+            onResetPosition: () => {
+              pin = null;
+              tracker.reposition();
+              void sendMessage({
+                type: 'siteRule:patch',
+                origin: location.origin,
+                patch: { buttonPin: null },
+              }).catch(() => undefined);
+            },
             onDismiss: (choice) => {
               void handleDismiss(choice);
             },
             // Drag-to-place: store the drop as an offset from the field's
-            // bottom-right (bottom-anchored, so a growing draft cannot move
-            // it), remember it for this site, use it immediately.
+            // composer shell (not its potentially oversized/scrolling
+            // editable), remember it for this site, and use it immediately.
+            onDragStart: () => {
+              manualDrag = true;
+            },
             onDragEnd: (point) => {
-              const box = field.element.getBoundingClientRect();
+              manualDrag = false;
+              const visualField = visualEditorRoot(field.element);
+              const box = composerShell(
+                visualField,
+                visualField.getBoundingClientRect(),
+              ).getBoundingClientRect();
               pin = {
                 dx: Math.round(point.left - box.right),
                 dy: Math.round(point.top - box.bottom),
               };
+              tracker.reposition();
               void sendMessage({
                 type: 'siteRule:patch',
                 origin: location.origin,
                 patch: { buttonPin: pin },
               }).catch(() => undefined);
+            },
+            onDragCancel: () => {
+              manualDrag = false;
+              tracker.reposition();
             },
           });
           layer.append(button.wrap);
@@ -187,12 +250,27 @@ export default defineContentScript({
           button?.destroy();
           button = null;
         },
-        onMove: (point, corner) => {
+        onMove: (
+          point,
+          corner,
+          instant = false,
+          visible = true,
+          slot = 'inside',
+        ) => {
           currentCorner = corner;
           if (!button) return;
+          button.setPlacement(slot);
+          button.wrap.hidden = !visible;
+          if (!visible) return;
+          button.wrap.setAttribute('data-gliding', String(instant));
           // transform, not top/left: this runs on every scroll frame and must
           // stay on the compositor.
           button.wrap.style.transform = `translate3d(${String(point.left)}px, ${String(point.top)}px, 0)`;
+          if (button.wrap.getAttribute('data-positioned') !== 'true') {
+            requestAnimationFrame(() => {
+              button?.wrap.setAttribute('data-positioned', 'true');
+            });
+          }
         },
         onDraftChange: (_draft, enhanceable) => {
           if (!button) return;
@@ -216,9 +294,21 @@ export default defineContentScript({
       {
         buttonSize: 40,
         isOwnNode: (node) =>
-          host.element.contains(node) || node === host.element,
+          node === host.element || node.getRootNode() === host.root,
         preferredCorner: () => suppression.corner,
         pinnedOffset: () => pin,
+        isPlacementLocked: () => manualDrag,
+        placementMode: () => placementMode,
+        ...(placementMode === 'external'
+          ? {
+              fallbackField: () =>
+                findCompatibilityComposer(
+                  document,
+                  (node) =>
+                    node === host.element || node.getRootNode() === host.root,
+                ),
+            }
+          : {}),
         isSuppressed: () => sessionHidden || siteHidden,
       },
     );
@@ -253,7 +343,7 @@ export default defineContentScript({
       const field = tracker.current();
       if (!field) return;
       button?.setInstant(true);
-      beginEnhance(field);
+      void beginEnhance(field);
     });
 
     async function handleDismiss(
@@ -286,6 +376,7 @@ export default defineContentScript({
       // without disconnecting would leave a request billing in the worker.
       session?.close();
       session = null;
+      beginEpoch++;
       tracker.stop();
       button?.destroy();
       button = null;

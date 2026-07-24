@@ -54,7 +54,14 @@ test('the options page is clean', async ({ page, extensionId }) => {
   const blocking = results.violations.filter((v) =>
     SERIOUS.includes(v.impact ?? ''),
   );
-  expect(blocking.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  expect(
+    blocking.map(
+      (v) =>
+        `${v.id}: ${v.help} (${v.nodes
+          .flatMap((node) => node.target)
+          .join(', ')})`,
+    ),
+  ).toEqual([]);
 });
 
 test('the popup is clean', async ({ page, extensionId }) => {
@@ -75,6 +82,10 @@ test('the whole flow is operable by keyboard alone', async ({ page }) => {
   await page.goto('http://localhost:5174/');
   const field = page.getByTestId('plain-textarea');
   await field.fill('tips for a job interview please');
+  // document_end still has to resolve suppression from extension storage.
+  // Wait for the injected surface before testing focus order; otherwise a
+  // very fast Tab can outrun content-script startup on a loaded Windows run.
+  await expect(page.locator('.pa-button')).toBeVisible();
   await field.focus();
 
   // The button is in the tab order immediately after the field — no hunting,

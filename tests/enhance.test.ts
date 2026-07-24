@@ -258,6 +258,11 @@ describe('clean', () => {
     expect(clean(raw, draft).text).toBe(raw);
   });
 
+  it('preserves a whole-draft fence that belongs to the user', () => {
+    const fencedDraft = '```ts\nconst answer = 42;\n```';
+    expect(clean(fencedDraft, fencedDraft).text).toBe(fencedDraft);
+  });
+
   it('strips wrapping quotes but never a quote the user wrote', () => {
     expect(clean('"Better text"', draft).text).toBe('Better text');
     expect(clean('“Better text”', draft).text).toBe('Better text');
@@ -265,6 +270,11 @@ describe('clean', () => {
     expect(clean('"Say "hello" to them"', draft).text).toBe(
       '"Say "hello" to them"',
     );
+  });
+
+  it('preserves wrapping quotes when the user draft owns them', () => {
+    const quotedDraft = '“Write a concise answer”';
+    expect(clean(quotedDraft, quotedDraft).text).toBe(quotedDraft);
   });
 
   it('strips trailing commentary about the changes', () => {

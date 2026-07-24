@@ -122,6 +122,31 @@ textarea.tiny {
   min-height: 120px;
 }
 
+.monaco-editor {
+  position: relative;
+  width: 100%;
+  min-height: 140px;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font:
+    14px/1.6 ui-monospace,
+    monospace;
+  white-space: pre-wrap;
+}
+
+.monaco-editor .inputarea {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 1px;
+  padding: 0;
+  opacity: 0;
+  inset: 8px auto auto 8px;
+}
+
 .lexical-editor {
   outline: none;
 }
@@ -252,17 +277,28 @@ button[data-testid='close-dialog'] {
   overflow-x: hidden;
 }
 
-/* ChatGPT true repro (from the live DOM): editable [551x42] whose bottom (650)
-   overlaps the control row's top (+ button at 640). The row is a real band
-   BELOW the text, pulled up 10px so its RECT overlaps the editable's bottom —
-   which is exactly what defeats field-bottom placement — while the visible
-   text stays above it. */
+/* ChatGPT true repro: the editable's layout rectangle is substantially taller
+   than the rounded composer and is clipped by an intermediate viewport. The
+   action row belongs to the shell, not to that misleading editor rectangle. */
+.gpt-shell {
+  position: relative;
+  height: 280px;
+  overflow: hidden;
+}
+.gpt-text-viewport {
+  height: 205px;
+  overflow-y: auto;
+}
 .gpt-shell .gpt-scroll {
-  max-height: 120px;
+  min-height: 440px;
+  max-height: none;
+  overflow-y: visible;
 }
 .gpt-shell .gpt-row {
-  margin-top: -10px;
-  position: relative;
+  position: absolute;
+  right: 16px;
+  bottom: 10px;
+  left: 16px;
   z-index: 1;
   padding-top: 8px;
   background: var(--surface);
@@ -272,8 +308,12 @@ button[data-testid='close-dialog'] {
 .gemini-pill {
   padding: 28px 16px;
 }
-.gemini-line {
+.gemini-rich-textarea {
+  display: block;
   flex: 1;
+  min-width: 0;
+}
+.gemini-line {
   height: 24px;
   line-height: 24px;
   outline: none;

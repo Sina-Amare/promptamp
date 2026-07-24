@@ -50,7 +50,10 @@ export const mockAdapter = async (req: ChatRequest): Promise<ChatResponse> => {
   // this one request, whereas the model name is standing configuration.
   const directive =
     fromDraft ??
-    (fromModel && ERROR_KINDS.has(fromModel[1] ?? '') ? fromModel : null);
+    (fromModel &&
+    (ERROR_KINDS.has(fromModel[1] ?? '') || fromModel[1] === 'slow')
+      ? fromModel
+      : null);
   const command = directive?.[1];
   const arg = directive?.[2];
 

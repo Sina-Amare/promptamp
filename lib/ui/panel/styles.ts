@@ -24,7 +24,7 @@ export const PANEL_CSS = `
      click-through: visible, and every control dead. */
   pointer-events: auto;
   inline-size: min(560px, calc(100vw - 32px));
-  min-inline-size: 320px;
+  min-inline-size: min(320px, calc(100vw - 16px));
   max-block-size: 50vh;
   display: flex;
   flex-direction: column;
@@ -417,10 +417,35 @@ export const PANEL_CSS = `
 .pa-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--ph-space-2);
   padding: var(--ph-space-3) var(--ph-space-4);
   border-block-start: 1px solid var(--ph-border);
   background: var(--ph-surface);
+}
+
+@media (max-width: 380px) {
+  .pa-panel {
+    inline-size: calc(100vw - 16px);
+  }
+
+  .pa-head {
+    flex-wrap: wrap;
+  }
+
+  .pa-title {
+    flex-basis: calc(100% - 36px);
+  }
+
+  .pa-actions .pa-primary {
+    flex: 1 0 100%;
+    order: -1;
+  }
+
+  .pa-actions .pa-secondary,
+  .pa-actions .pa-quiet {
+    flex: 1;
+  }
 }
 
 /* Exactly one visually-primary element on the surface — the amber "amplify"
