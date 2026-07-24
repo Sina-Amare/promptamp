@@ -8,6 +8,7 @@ import {
 } from '../lib/enhance/run';
 import {
   ENHANCE_PORT,
+  SITE_SUPPRESSION_CHANGED,
   TRIGGER_ENHANCE,
   isTrustedSender,
   type EnhanceClientMessage,
@@ -164,7 +165,7 @@ export default defineBackground(() => {
       // Return the promise itself. WXT ships the webextension-polyfill, whose
       // contract is promise-based — the `return true` + sendResponse callback
       // style silently never delivers a reply through it.
-      return handle(message).catch((error: unknown) => {
+      return handle(message, sender).catch((error: unknown) => {
         console.error('[promptamp]', error);
         return undefined;
       });
@@ -196,6 +197,62 @@ async function notifyActiveTab(tabId?: number): Promise<void> {
   }
 }
 
+interface MessageSenderTab {
+  tab?: {
+    id?: number | undefined;
+    url?: string | undefined;
+  };
+}
+
+function httpOrigin(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+      ? parsed.origin
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remove every live surface for an origin, including composers hosted in
+ * cross-origin iframes. Persistence protects future navigations; this message
+ * makes the user's click authoritative immediately in already-open tabs.
+ */
+async function broadcastSiteSuppression(
+  origin: string,
+  sourceTabId?: number,
+): Promise<void> {
+  const tabIds = new Set<number>();
+  if (sourceTabId !== undefined) tabIds.add(sourceTabId);
+
+  try {
+    for (const tab of await browser.tabs.query({})) {
+      if (tab.id !== undefined && httpOrigin(tab.url) === origin) {
+        tabIds.add(tab.id);
+      }
+    }
+  } catch {
+    // The source tab still receives the signal when broad tab lookup is not
+    // available in a browser or permission configuration.
+  }
+
+  await Promise.all(
+    [...tabIds].map(async (tabId) => {
+      try {
+        await browser.tabs.sendMessage(tabId, {
+          type: SITE_SUPPRESSION_CHANGED,
+          origin,
+        });
+      } catch {
+        // No content script in this tab (browser page, discarded tab, etc.).
+      }
+    }),
+  );
+}
+
 function isRequest(value: unknown): value is Request {
   return (
     typeof value === 'object' &&
@@ -205,7 +262,10 @@ function isRequest(value: unknown): value is Request {
   );
 }
 
-async function handle(message: Request): Promise<unknown> {
+async function handle(
+  message: Request,
+  sender: MessageSenderTab,
+): Promise<unknown> {
   switch (message.type) {
     case 'settings:get':
       return getSettings();
@@ -213,11 +273,19 @@ async function handle(message: Request): Promise<unknown> {
     case 'settings:patch':
       return patchSettings(message.patch);
 
+    case 'site:scope':
+      return httpOrigin(sender.tab?.url) ?? '';
+
     case 'siteRule:get':
       return getSiteRule(message.origin);
 
-    case 'siteRule:patch':
-      return patchSiteRule(message.origin, message.patch);
+    case 'siteRule:patch': {
+      const next = await patchSiteRule(message.origin, message.patch);
+      if (message.patch.hidden === true) {
+        await broadcastSiteSuppression(message.origin, sender.tab?.id);
+      }
+      return next;
+    }
 
     case 'profiles:list':
       return listProfiles();

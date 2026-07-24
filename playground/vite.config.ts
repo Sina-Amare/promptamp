@@ -8,8 +8,10 @@ import { defineConfig } from 'vite';
  */
 export default defineConfig({
   root: __dirname,
-  server: { port: 5174, strictPort: true },
-  preview: { port: 5174, strictPort: true },
+  // Bind beyond the localhost hostname so the iframe suite can load the same
+  // fixture through 127.0.0.1 and exercise real cross-origin frame behavior.
+  server: { host: '0.0.0.0', port: 5174, strictPort: true },
+  preview: { host: '0.0.0.0', port: 5174, strictPort: true },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

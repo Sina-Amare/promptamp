@@ -387,6 +387,54 @@ test('hides on this site and stays hidden after reload', async ({ page }) => {
   await expect(page.locator(HOST_SELECTOR)).toHaveCount(0);
 });
 
+test('hiding from a cross-origin composer closes every frame in the site', async ({
+  page,
+}) => {
+  const mountFrame = async (): Promise<void> => {
+    await page.evaluate(() => {
+      const frame = document.createElement('iframe');
+      frame.src = 'http://127.0.0.1:5174/iframe.html';
+      frame.dataset.testid = 'cross-origin-composer-frame';
+      frame.style.cssText = 'width:700px;height:260px';
+      document.body.append(frame);
+    });
+  };
+
+  await page.goto('http://localhost:5174/');
+  await mountFrame();
+  const frame = page.frameLocator(
+    '[data-testid="cross-origin-composer-frame"]',
+  );
+  const field = frame.getByTestId('iframe-composer');
+  await field.fill('Hide PromptAmp for this entire top-level site.');
+  await field.click();
+  await expect(frame.locator('.pa-button')).toBeVisible();
+
+  await frame.locator('.pa-button-wrap').hover();
+  await frame.locator('.pa-dismiss').click();
+  await frame
+    .locator('.pa-menu button', { hasText: 'Hide on this site' })
+    .click();
+
+  // The iframe that originated the action and the independent top-frame
+  // instance disappear together. Focusing another field cannot resurrect it.
+  await expect(frame.locator(HOST_SELECTOR)).toHaveCount(0);
+  await expect(page.locator(HOST_SELECTOR)).toHaveCount(0);
+  await page.getByTestId('plain-textarea').click();
+  await expect(page.locator('.pa-button')).toHaveCount(0);
+
+  // The iframe stores the top-level site's origin, not its own 127.0.0.1
+  // origin, so both frames remain suppressed on the next load.
+  await page.reload();
+  await mountFrame();
+  const reloadedFrame = page.frameLocator(
+    '[data-testid="cross-origin-composer-frame"]',
+  );
+  await reloadedFrame.getByTestId('iframe-composer').click();
+  await expect(page.locator(HOST_SELECTOR)).toHaveCount(0);
+  await expect(reloadedFrame.locator(HOST_SELECTOR)).toHaveCount(0);
+});
+
 test('works inside a native dialog in the top layer', async ({ page }) => {
   await page.goto('http://localhost:5174/');
   await page.getByTestId('open-dialog').click();

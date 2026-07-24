@@ -1,6 +1,9 @@
 import { browser, defineContentScript } from '#imports';
 import { sendMessage } from '../lib/messaging/client';
-import { TRIGGER_ENHANCE } from '../lib/messaging/protocol';
+import {
+  SITE_SUPPRESSION_CHANGED,
+  TRIGGER_ENHANCE,
+} from '../lib/messaging/protocol';
 import {
   readValue,
   resolveEditorTarget,
@@ -51,9 +54,11 @@ export default defineContentScript({
     // off switch is the fastest way to lose a user's trust.
     const suppression = await resolveSuppression();
     if (suppression.suppressed) return;
+    const siteOrigin = suppression.origin;
 
     let sessionHidden = false;
     let siteHidden = false;
+    let destroyed = false;
 
     const host = createShadowHost({
       themeAnchor: document.body,
@@ -150,7 +155,7 @@ export default defineContentScript({
         {
           field,
           layer,
-          origin: location.origin,
+          origin: siteOrigin,
           draft,
           ...(isModelEditor
             ? {
@@ -212,7 +217,7 @@ export default defineContentScript({
               tracker.reposition();
               void sendMessage({
                 type: 'siteRule:patch',
-                origin: location.origin,
+                origin: siteOrigin,
                 patch: { buttonPin: null },
               }).catch(() => undefined);
             },
@@ -239,7 +244,7 @@ export default defineContentScript({
               tracker.reposition();
               void sendMessage({
                 type: 'siteRule:patch',
-                origin: location.origin,
+                origin: siteOrigin,
                 patch: { buttonPin: pin },
               }).catch(() => undefined);
             },
@@ -270,7 +275,7 @@ export default defineContentScript({
             pin = null;
             void sendMessage({
               type: 'siteRule:patch',
-              origin: location.origin,
+              origin: siteOrigin,
               patch: { buttonPin: null },
             }).catch(() => undefined);
           }
@@ -350,6 +355,16 @@ export default defineContentScript({
      */
     browser.runtime.onMessage.addListener((message: unknown) => {
       if (
+        typeof message === 'object' &&
+        message !== null &&
+        (message as { type?: unknown }).type === SITE_SUPPRESSION_CHANGED &&
+        (message as { origin?: unknown }).origin === siteOrigin
+      ) {
+        siteHidden = true;
+        teardown();
+        return;
+      }
+      if (
         typeof message !== 'object' ||
         message === null ||
         (message as { type?: unknown }).type !== TRIGGER_ENHANCE
@@ -372,12 +387,15 @@ export default defineContentScript({
       }
       if (choice === 'site') {
         siteHidden = true;
-        await sendMessage({
-          type: 'siteRule:patch',
-          origin: location.origin,
-          patch: { hidden: true },
-        });
+        // The click is authoritative even if the worker is waking up: remove
+        // this surface first, then persist and fan the decision out to every
+        // frame in the tab.
         teardown();
+        void sendMessage({
+          type: 'siteRule:patch',
+          origin: siteOrigin,
+          patch: { hidden: true },
+        }).catch(() => undefined);
         return;
       }
       await sendMessage({
@@ -388,6 +406,8 @@ export default defineContentScript({
     }
 
     function teardown(): void {
+      if (destroyed) return;
+      destroyed = true;
       // Close the session first: it holds an open Port, and dropping the host
       // without disconnecting would leave a request billing in the worker.
       session?.close();
@@ -406,6 +426,7 @@ export default defineContentScript({
 
 interface Suppression {
   suppressed: boolean;
+  origin: string;
   corner: ButtonCorner | null;
   pin: { dx: number; dy: number } | null;
 }
@@ -416,27 +437,32 @@ interface Suppression {
  */
 async function loadSuppression(): Promise<Suppression | null> {
   try {
+    const resolvedOrigin = await sendMessage({ type: 'site:scope' });
+    const origin = resolvedOrigin || location.origin;
     const settings = await sendMessage({ type: 'settings:get' });
     if (settings.globallyHidden)
-      return { suppressed: true, corner: null, pin: null };
+      return { suppressed: true, origin, corner: null, pin: null };
     // A one-hour pause for screen shares (UX-SPEC §1.5).
     if (settings.pausedUntil && settings.pausedUntil > Date.now()) {
-      return { suppressed: true, corner: null, pin: null };
+      return { suppressed: true, origin, corner: null, pin: null };
     }
 
     const rule = await sendMessage({
       type: 'siteRule:get',
-      origin: location.origin,
+      origin,
     });
-    if (rule.hidden) return { suppressed: true, corner: null, pin: null };
+    if (rule.hidden) {
+      return { suppressed: true, origin, corner: null, pin: null };
+    }
 
     const hiddenThisSession = await sendMessage({
       type: 'session:isOriginHidden',
-      origin: location.origin,
+      origin,
     });
 
     return {
       suppressed: hiddenThisSession,
+      origin,
       corner: rule.buttonCorner,
       pin: rule.buttonPin,
     };
@@ -460,5 +486,10 @@ async function resolveSuppression(): Promise<Suppression> {
     if (result) return result;
     await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
   }
-  return { suppressed: true, corner: null, pin: null };
+  return {
+    suppressed: true,
+    origin: location.origin,
+    corner: null,
+    pin: null,
+  };
 }

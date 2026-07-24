@@ -28,6 +28,15 @@ export const ENHANCE_PORT = 'promptamp:enhance';
  */
 export const TRIGGER_ENHANCE = 'promptamp:trigger-enhance';
 
+/**
+ * Worker → every content-script frame in a tab.
+ *
+ * A site can host its composer in an iframe, so removing only the frame whose
+ * menu was clicked leaves another PromptAmp surface alive. This signal makes a
+ * persisted site hide take effect atomically across the whole tab.
+ */
+export const SITE_SUPPRESSION_CHANGED = 'promptamp:site-suppression-changed';
+
 /* ------------------------------- errors -------------------------------- */
 
 /**
@@ -80,6 +89,8 @@ export interface SafeError {
 export type Request =
   | { type: 'settings:get' }
   | { type: 'settings:patch'; patch: Partial<Settings> }
+  /** Canonical top-level tab origin, even when called from an iframe. */
+  | { type: 'site:scope' }
   | { type: 'siteRule:get'; origin: string }
   | { type: 'siteRule:patch'; origin: string; patch: Partial<SiteRule> }
   | { type: 'profiles:list' }
@@ -181,6 +192,7 @@ export type UsageInfo =
 export interface ResponseMap {
   'settings:get': Settings;
   'settings:patch': Settings;
+  'site:scope': string;
   'siteRule:get': SiteRule;
   'siteRule:patch': SiteRule;
   'profiles:list': Profile[];
