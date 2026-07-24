@@ -64,11 +64,16 @@ export function assemble(
 }
 
 /**
- * Overrides the LANGUAGE section every profile carries.
+ * Overrides every language rule the profile carries.
  *
- * Appended *last* on purpose: each built-in prompt states its own language rule
- * (mirror the draft, or English for image/video), and the closing instruction
- * is the one models weight most heavily. The carve-outs are not optional —
+ * Appended *last* on purpose, but appending is not enough on its own: each
+ * built-in prompt states its language rule TWICE — once in its LANGUAGE section
+ * and again as the final line of its OUTPUT section ("The rewrite is entirely
+ * in the draft's language"). That closing line sits immediately before this
+ * directive, so scoping the override to "the LANGUAGE section" alone leaves a
+ * flat contradiction the model resolves toward the draft's language (a German
+ * pick on a Persian draft came back Persian). The scope must name every
+ * language rule, including that closing line. The carve-outs are not optional —
  * translating a stack trace, a quoted string, or `--ar 16:9` would destroy the
  * rewrite, and every profile's LITERAL/VERBATIM rule depends on them holding.
  */
@@ -78,8 +83,8 @@ export function languageDirective(language: string | undefined): string {
 
   return `
 
-OUTPUT LANGUAGE — this section overrides the LANGUAGE section above.
-Write the entire rewrite in ${name}, whatever language the draft is written in. Translate the *meaning*, never word by word: first understand what the user is actually asking — resolving typos, informal spellings, and words with several senses from the draft's own context — then express that intent naturally in ${name}. A domain word must keep its domain sense (a draft about test design that says "keeping the trap easy" means preserving/maintaining it, not memorising it). Everything you add is in ${name} too; never mix another language into it. Unchanged regardless: code, error messages, file paths, identifiers, URLs, quoted strings, text meant to appear inside an image or on screen, and user-typed parameters — those stay exactly as the draft wrote them.`;
+OUTPUT LANGUAGE — this instruction overrides every other language rule in this prompt, including the LANGUAGE section above and any closing line stating the rewrite is in the draft's own language. Those rules do not apply while this section is present.
+Write the entire rewrite in ${name}, whatever language the draft is written in — do not mirror the draft's language, and do not switch back to it at the end. Translate the *meaning*, never word by word: first understand what the user is actually asking — resolving typos, informal spellings, and words with several senses from the draft's own context — then express that intent naturally in ${name}. A domain word must keep its domain sense (a draft about test design that says "keeping the trap easy" means preserving/maintaining it, not memorising it). Everything you add is in ${name} too; never mix another language into it. Unchanged regardless: code, error messages, file paths, identifiers, URLs, quoted strings, text meant to appear inside an image or on screen, and user-typed parameters — those stay exactly as the draft wrote them.`;
 }
 
 /**
