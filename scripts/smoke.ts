@@ -126,13 +126,7 @@ async function probe(context: BrowserContext, target: Target): Promise<Result> {
       return { name: target.name, outcome: 'no-button', detail: 'no geometry' };
     }
 
-    // Inside the field is the design; outside-below is the documented fallback
-    // for fields too small to hold it.
-    const inside =
-      box.x >= fieldBox.x - 2 &&
-      box.y >= fieldBox.y - 2 &&
-      box.x + box.width <= fieldBox.x + fieldBox.width + 2 &&
-      box.y + box.height <= fieldBox.y + fieldBox.height + 2;
+    const placement = await button.getAttribute('data-placement');
 
     const viewport = page.viewportSize();
     const onScreen =
@@ -145,7 +139,7 @@ async function probe(context: BrowserContext, target: Target): Promise<Result> {
     return {
       name: target.name,
       outcome: 'ok',
-      detail: `${inside ? 'inside field' : 'outside field'}, ${
+      detail: `${placement === 'outside' ? 'outside dock' : 'unexpected inside placement'}, ${
         onScreen ? 'on screen' : 'OFF SCREEN'
       }, at ${String(Math.round(box.x))},${String(Math.round(box.y))}`,
     };

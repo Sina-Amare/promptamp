@@ -139,26 +139,34 @@ describe('field tracker resource ownership', () => {
 
   it('adopts an unfocused final hydration composer from the compatibility fallback', () => {
     class FakeResizeObserver {
-      observe(): void {}
-      disconnect(): void {}
+      observe(): void {
+        return;
+      }
+      disconnect(): void {
+        return;
+      }
     }
     class FakeMutationObserver {
-      observe(): void {}
-      disconnect(): void {}
+      observe(): void {
+        return;
+      }
+      disconnect(): void {
+        return;
+      }
     }
     vi.stubGlobal('ResizeObserver', FakeResizeObserver);
     vi.stubGlobal('MutationObserver', FakeMutationObserver);
 
-    let safetyTick: (() => void) | null = null;
+    let safetyTick = (): void => {
+      throw new Error('The tracker interval was not installed.');
+    };
     vi.spyOn(globalThis, 'setInterval').mockImplementation(((
       callback: () => void,
     ) => {
       safetyTick = callback;
       return 1;
     }) as never);
-    vi.spyOn(globalThis, 'clearInterval').mockImplementation(
-      (() => undefined) as never,
-    );
+    vi.spyOn(globalThis, 'clearInterval').mockImplementation(() => undefined);
 
     const preload = document.createElement('textarea');
     const finalComposer = document.createElement('textarea');
@@ -194,8 +202,7 @@ describe('field tracker resource ownership', () => {
     preload.remove();
     document.body.append(finalComposer);
     compatibilityField = finalComposer;
-    expect(safetyTick).not.toBeNull();
-    safetyTick!();
+    safetyTick();
 
     expect(tracker.current()).toBe(finalComposer);
     expect(onAttach).toHaveBeenCalledTimes(2);

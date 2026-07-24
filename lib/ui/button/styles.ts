@@ -75,9 +75,9 @@ export const BUTTON_CSS = `
 }
 
 /*
- * Placement has two visual grammars:
- * - in a host action row, a quiet rounded utility key;
- * - outside, a tab physically attached to the composer's nearest edge.
+ * Production placement is a tab physically attached to the composer's nearest
+ * edge. The inside treatment remains available only to the placement engine's
+ * isolated automatic-mode tests.
  *
  * The hit target remains the same 40px square in both cases. Only our visual
  * backplate changes, so collision guarantees and pointer geometry are stable.

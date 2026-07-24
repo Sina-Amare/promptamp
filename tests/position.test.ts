@@ -21,12 +21,9 @@ afterEach(() => {
 });
 
 describe('the ladder', () => {
-  it('leads inside at bottom-end — the convention real chat UIs fit', () => {
-    // Outside-first failed live: ChatGPT/Claude wrap the editable in a padded
-    // shell, so "just outside the field" straddles the shell's border.
-    expect(CORNER_LADDER[0]).toBe('bottom-end');
-    // The outside rungs stay available as genuine fallbacks.
-    expect(CORNER_LADDER).toContain('outside-end');
+  it('leads with the universal external composer dock', () => {
+    expect(CORNER_LADDER[0]).toBe('outside-end');
+    expect(CORNER_LADDER[1]).toBe('outside-below');
   });
 });
 

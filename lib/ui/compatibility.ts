@@ -19,24 +19,23 @@ const PROMPT_WORDS =
   /\b(ask|chat|compose|create|describe|gemini|message|prompt|send|type|write)\b/i;
 
 /**
- * Gemini and Flow hydrate their composer in multiple stages and populate the
- * action row after the first editable has already received focus. They get a
- * deliberately separate presentation: PromptAmp docks outside the composer,
- * where a late model picker can neither cover it nor evict its slot.
+ * Gemini and Flow hydrate their composer in multiple stages and do not always
+ * restore focus to the final editor. They need document-level reacquisition;
+ * other sites remain on the cheaper focus-led tracker.
  */
-export function placementModeForLocation(
+export function needsCompatibilityReacquisition(
   hostname: string,
   pathname: string,
-): ComposerPlacementMode {
+): boolean {
   const host = hostname.toLowerCase().replace(/\.$/, '');
-  if (host === 'gemini.google.com') return 'external';
+  if (host === 'gemini.google.com') return true;
   if (
     (host === 'labs.google' || host === 'labs.google.com') &&
     /^\/fx\/tools\/flow(?:\/|$)/i.test(pathname)
   ) {
-    return 'external';
+    return true;
   }
-  return 'auto';
+  return false;
 }
 
 /**

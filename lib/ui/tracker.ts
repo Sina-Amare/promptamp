@@ -85,7 +85,7 @@ export interface TrackerOptions {
   pinnedOffset: () => { dx: number; dy: number } | null;
   /** True while the user is dragging; observers must not fight their pointer. */
   isPlacementLocked?: () => boolean;
-  /** Dedicated presentation for hosts whose action row hydrates in stages. */
+  /** Production uses external; automatic mode remains for isolated internals. */
   placementMode?: () => ComposerPlacementMode;
   /** Bounded compatibility reacquisition when final hydration loses focus. */
   fallbackField?: () => HTMLElement | null;

@@ -38,8 +38,8 @@ export interface ButtonCallbacks {
   canResetPosition?: () => boolean;
   /**
    * The user dragged the control and released it at these viewport coordinates
-   * (the wrap's top-left). The site remembers the spot — the user is the
-   * final authority on placement.
+   * (the wrap's top-left). Valid exterior positions near the composer persist;
+   * unsafe drops reproject to its nearest clear edge.
    */
   onDragEnd?: (point: { top: number; left: number }) => void;
   /** Suspend automatic layout tracking once movement becomes a real drag. */
@@ -124,9 +124,9 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
 
   /* ── drag to place ─────────────────────────────────────────────── */
 
-  // The user is the final authority on placement: drag the control anywhere and
-  // the site remembers the spot. A press that moves less than the threshold is
-  // a click; past it, the click is swallowed so a drop never fires an enhance.
+  // A press that moves less than the threshold is a click; past it, the click
+  // is swallowed so a drop never fires an enhance. The tracker validates the
+  // released point against the composer before it becomes persistent.
   const DRAG_THRESHOLD = 5;
   let suppressClick = false;
   let suppressClickTimer: ReturnType<typeof setTimeout> | undefined;

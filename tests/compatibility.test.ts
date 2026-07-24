@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   findCompatibilityComposer,
-  placementModeForLocation,
+  needsCompatibilityReacquisition,
 } from '../lib/ui/compatibility';
 
 function rect(
@@ -37,14 +37,14 @@ afterEach(() => {
 
 describe('composer compatibility mode', () => {
   it.each([
-    ['gemini.google.com', '/app', 'external'],
-    ['gemini.google.com.', '/app', 'external'],
-    ['labs.google', '/fx/tools/flow/project/123', 'external'],
-    ['labs.google.com', '/fx/tools/flow', 'external'],
-    ['labs.google', '/other', 'auto'],
-    ['chatgpt.com', '/', 'auto'],
-  ] as const)('maps %s%s to %s', (host, path, expected) => {
-    expect(placementModeForLocation(host, path)).toBe(expected);
+    ['gemini.google.com', '/app', true],
+    ['gemini.google.com.', '/app', true],
+    ['labs.google', '/fx/tools/flow/project/123', true],
+    ['labs.google.com', '/fx/tools/flow', true],
+    ['labs.google', '/other', false],
+    ['chatgpt.com', '/', false],
+  ] as const)('maps %s%s reacquisition to %s', (host, path, expected) => {
+    expect(needsCompatibilityReacquisition(host, path)).toBe(expected);
   });
 
   it('selects the final visible prompt after an unfocused hydration replacement', () => {

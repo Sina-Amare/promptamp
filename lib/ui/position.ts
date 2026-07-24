@@ -37,21 +37,17 @@ export const HIT_ZONE = 48;
 /**
  * The flip ladder.
  *
- * Inside corners lead — the convention Grammarly/LanguageTool established, and
- * the placement live testing validated. The outside-first experiment failed on
- * real chat UIs: ChatGPT and Claude wrap the true editable in a padded visual
- * shell, so "just outside the field" lands ON the shell's border and reads as
- * a glitch. Inside `bottom-end` sits where the eye already is (the send row),
- * the occupancy check walks it off any control there, and the outside rungs
- * remain as genuine fallbacks for tiny or crowded fields.
+ * The shipping presentation is external and composer-attached. This exported
+ * ladder remains for the pure corner helpers and the internal automatic mode,
+ * with the same outside-first order as production.
  */
 export const CORNER_LADDER: ButtonCorner[] = [
+  'outside-end',
+  'outside-below',
   'bottom-end',
   'top-end',
   'bottom-start',
   'top-start',
-  'outside-end',
-  'outside-below',
 ];
 
 export interface Point {
@@ -673,7 +669,7 @@ function isPinnedPointSafe(
   const shellBox = shell.getBoundingClientRect();
   const candidate = pointRect(point, size);
   if (mode === 'external') {
-    // Compatibility launchers never return to the action row. A stale pin
+    // External launchers never return to the action row. A stale pin
     // from an older build may point at Gemini's Pro picker or Flow's page
     // corner; accept only a complete target outside and near the live shell.
     if (rectsIntersect(candidate, shellBox)) return false;

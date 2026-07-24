@@ -5,9 +5,9 @@ import { expect, test, useMockProvider } from './fixtures';
  * Placement, proven against faithful replicas of the real chat UIs the button
  * kept missing (Claude / ChatGPT / Grok shells — see playground/index.html).
  *
- * These are geometric assertions, not vibes: the affordance must sit inside the
- * visible composer shell, off the user's text, off every control, and stay
- * glued through page scroll and through the upward growth of a long draft.
+ * These are geometric assertions, not vibes: the complete affordance must dock
+ * immediately outside the visible composer shell, off the user's text and
+ * every control, and stay glued through scroll and upward draft growth.
  */
 
 interface Box {
@@ -19,15 +19,6 @@ interface Box {
 
 const TOLERANCE = 3;
 
-function within(inner: Box, outer: Box, pad = TOLERANCE): boolean {
-  return (
-    inner.x >= outer.x - pad &&
-    inner.y >= outer.y - pad &&
-    inner.x + inner.width <= outer.x + outer.width + pad &&
-    inner.y + inner.height <= outer.y + outer.height + pad
-  );
-}
-
 function intersects(a: Box, b: Box, slack = 2): boolean {
   return (
     a.x + slack < b.x + b.width &&
@@ -35,6 +26,31 @@ function intersects(a: Box, b: Box, slack = 2): boolean {
     a.y + slack < b.y + b.height &&
     b.y + slack < a.y + a.height
   );
+}
+
+function dockSide(
+  target: Box,
+  shell: Box,
+  tolerance = TOLERANCE,
+): 'right' | 'left' | 'above' | 'below' | null {
+  const targetRight = target.x + target.width;
+  const targetBottom = target.y + target.height;
+  const shellRight = shell.x + shell.width;
+  const shellBottom = shell.y + shell.height;
+  const verticalFit =
+    target.y >= shell.y - tolerance && targetBottom <= shellBottom + tolerance;
+  const horizontalFit =
+    target.x >= shell.x - tolerance && targetRight <= shellRight + tolerance;
+
+  if (Math.abs(target.x - shellRight) <= tolerance && verticalFit)
+    return 'right';
+  if (Math.abs(targetRight - shell.x) <= tolerance && verticalFit)
+    return 'left';
+  if (Math.abs(targetBottom - shell.y) <= tolerance && horizontalFit)
+    return 'above';
+  if (Math.abs(target.y - shellBottom) <= tolerance && horizontalFit)
+    return 'below';
+  return null;
 }
 
 async function boxOf(locator: Locator): Promise<Box> {
@@ -123,8 +139,15 @@ async function assertPlacement(
   const discBox = await boxOf(hitbox(page));
   const shellBox = await boxOf(page.getByTestId(shellId));
 
-  // 1. The complete 40px target is in the box — not only the visible disc.
-  expect(within(discBox, shellBox), 'hit target inside the shell').toBe(true);
+  // 1. The complete 40px target is outside and attached to the shell.
+  expect(intersects(discBox, shellBox, 0), 'hit target enters the shell').toBe(
+    false,
+  );
+  expect(
+    dockSide(discBox, shellBox),
+    'hit target detached from shell',
+  ).not.toBe(null);
+  await expect(hitbox(page)).toHaveAttribute('data-placement', 'outside');
 
   // 2. Never on the user's words.
   for (const rect of await textRects(page, editableId)) {
@@ -159,7 +182,9 @@ test.beforeEach(async ({ worker }) => {
   await useMockProvider(worker);
 });
 
-test('an empty tall composer uses its quiet top corner', async ({ page }) => {
+test('an empty tall composer uses the universal outside dock', async ({
+  page,
+}) => {
   await page.goto('http://localhost:5174/');
   await page.getByTestId('claude-editable').click();
   const wrap = hitbox(page);
@@ -168,8 +193,13 @@ test('an empty tall composer uses its quiet top corner', async ({ page }) => {
 
   const target = await boxOf(wrap);
   const shell = await boxOf(page.getByTestId('claude-shell'));
-  expect(within(target, shell), 'target leaves empty composer').toBe(true);
-  expect(Math.abs(target.y - (shell.y + 8))).toBeLessThanOrEqual(TOLERANCE);
+  expect(intersects(target, shell, 0), 'target enters empty composer').toBe(
+    false,
+  );
+  expect(dockSide(target, shell), 'target detached from composer').not.toBe(
+    null,
+  );
+  await expect(wrap).toHaveAttribute('data-placement', 'outside');
   for (const control of await page
     .getByTestId('claude-shell')
     .locator('button')
@@ -178,7 +208,7 @@ test('an empty tall composer uses its quiet top corner', async ({ page }) => {
   }
 });
 
-test('Claude-style shell: long RTL draft, disc in the row, glued on scroll', async ({
+test('Claude-style shell: long RTL draft, outside dock glued on scroll', async ({
   page,
 }) => {
   await page.goto('http://localhost:5174/');
@@ -233,7 +263,7 @@ test('Claude-style shell: disc stays put while the draft grows upward', async ({
   await assertPlacement(page, 'claude-shell', 'claude-editable');
 });
 
-test('ChatGPT-style shell: internal scroll on a long draft, disc in the row', async ({
+test('ChatGPT-style shell: internal scroll with a stable outside dock', async ({
   page,
 }) => {
   await page.goto('http://localhost:5174/');
@@ -298,7 +328,7 @@ test('ChatGPT-style shell: the panel clears the composer on a long draft', async
   expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(viewport.height);
 });
 
-test('Grok-style pill: disc beside the cluster, never over the edge', async ({
+test('Grok-style pill: universal dock stays outside the composer', async ({
   page,
 }) => {
   await page.goto('http://localhost:5174/');
@@ -307,11 +337,11 @@ test('Grok-style pill: disc beside the cluster, never over the edge', async ({
   await expect(disc(page)).toBeVisible();
   await page.waitForTimeout(250);
 
-  const discBox = await boxOf(disc(page));
   const targetBox = await boxOf(hitbox(page));
   const shellBox = await boxOf(page.getByTestId('grok-shell'));
-  expect(within(discBox, shellBox), 'disc inside the pill').toBe(true);
-  expect(within(targetBox, shellBox), 'hit target inside the pill').toBe(true);
+  expect(intersects(targetBox, shellBox, 0)).toBe(false);
+  expect(dockSide(targetBox, shellBox)).not.toBeNull();
+  await expect(hitbox(page)).toHaveAttribute('data-placement', 'outside');
   for (const control of await page
     .getByTestId('grok-shell')
     .locator('button')
@@ -320,7 +350,7 @@ test('Grok-style pill: disc beside the cluster, never over the edge', async ({
   }
 });
 
-test('Gemini-style pill: a 24px-tall line still gets the disc, well placed', async ({
+test('Gemini-style pill: a 24px-tall line gets the same outside dock', async ({
   page,
 }) => {
   // Ground truth from gemini.google.com: EDITABLE [445x24] in a padded pill.
@@ -331,11 +361,11 @@ test('Gemini-style pill: a 24px-tall line still gets the disc, well placed', asy
   await expect(disc(page)).toBeVisible();
   await page.waitForTimeout(250);
 
-  const discBox = await boxOf(disc(page));
   const targetBox = await boxOf(hitbox(page));
   const shellBox = await boxOf(page.getByTestId('gemini-shell'));
-  expect(within(discBox, shellBox), 'disc inside the pill').toBe(true);
-  expect(within(targetBox, shellBox), 'hit target inside the pill').toBe(true);
+  expect(intersects(targetBox, shellBox, 0)).toBe(false);
+  expect(dockSide(targetBox, shellBox)).not.toBeNull();
+  await expect(hitbox(page)).toHaveAttribute('data-placement', 'outside');
   for (const control of await page
     .getByTestId('gemini-shell')
     .locator('button')
@@ -429,7 +459,7 @@ test('Gemini hydration: adopts the replaced editor and vacates a late Pro contro
   ).toBeGreaterThan(TOLERANCE);
 });
 
-test('outside fallback is a composer-attached tab, not a floating disc', async ({
+test('the universal launcher is a composer-attached tab, not a floating disc', async ({
   page,
 }) => {
   await page.goto('http://localhost:5174/');
@@ -489,6 +519,66 @@ test('outside fallback is a composer-attached tab, not a floating disc', async (
   expect(radii).toContain('0px');
 });
 
+test('a detached legacy pin is retired and reprojected beside the composer', async ({
+  page,
+  worker,
+}) => {
+  await worker.evaluate(async () => {
+    const api = (
+      globalThis as unknown as {
+        chrome: {
+          storage: {
+            local: {
+              get: (key: string) => Promise<Record<string, unknown>>;
+              set: (items: unknown) => Promise<void>;
+            };
+          };
+        };
+      }
+    ).chrome;
+    await api.storage.local.set({
+      siteRules: {
+        'http://localhost:5174': {
+          hidden: false,
+          pinnedProfileId: null,
+          buttonCorner: 'bottom-end',
+          buttonPin: { dx: -2_000, dy: -2_000 },
+        },
+      },
+      siteRules$: { v: 1 },
+    });
+  });
+
+  await page.goto('http://localhost:5174/');
+  await fillEditable(page, 'claude-editable', 'Retire this old placement pin.');
+  const wrap = hitbox(page);
+  await expect(wrap).toBeVisible();
+  await assertPlacement(page, 'claude-shell', 'claude-editable');
+  await expect
+    .poll(() =>
+      worker.evaluate(async () => {
+        const api = (
+          globalThis as unknown as {
+            chrome: {
+              storage: {
+                local: {
+                  get: (key: string) => Promise<Record<string, unknown>>;
+                };
+              };
+            };
+          }
+        ).chrome;
+        const stored = await api.storage.local.get('siteRules');
+        const rules = stored.siteRules as Record<
+          string,
+          { buttonPin?: unknown }
+        >;
+        return rules['http://localhost:5174']?.buttonPin;
+      }),
+    )
+    .toBeNull();
+});
+
 test('the dismiss menu flips above the viewport edge and has Cancel', async ({
   page,
 }) => {
@@ -524,7 +614,7 @@ test('the dismiss menu flips above the viewport edge and has Cancel', async ({
   await expect(wrap).toBeVisible();
 });
 
-test('a dragged pin stays where dropped, survives reload, clamps on resize, and can be reset', async ({
+test('a dragged external pin stays where dropped, survives reload, clamps on resize, and can be reset', async ({
   page,
 }) => {
   await page.goto('http://localhost:5174/');
@@ -533,9 +623,10 @@ test('a dragged pin stays where dropped, survives reload, clamps on resize, and 
   const wrap = page.locator('.pa-button-wrap');
   await expect(wrap).toBeVisible();
   const start = await boxOf(wrap);
+  const shellAtDrag = await boxOf(page.getByTestId('grok-shell'));
   const intended = {
-    x: start.x - 120,
-    y: start.y - 120,
+    x: shellAtDrag.x + 80,
+    y: shellAtDrag.y - 56,
   };
 
   await page.mouse.move(start.x + 20, start.y + 20);

@@ -16,7 +16,7 @@ import { createFieldTracker } from '../lib/ui/tracker';
 import { composerShell } from '../lib/ui/position';
 import {
   findCompatibilityComposer,
-  placementModeForLocation,
+  needsCompatibilityReacquisition,
 } from '../lib/ui/compatibility';
 import type { ButtonCorner } from '../lib/storage/schemas';
 import { closestComposed } from '../lib/dom/composed';
@@ -182,7 +182,11 @@ export default defineContentScript({
     // applies instantly; persisted so it survives reloads.
     let pin = suppression.pin;
     let manualDrag = false;
-    const placementMode = placementModeForLocation(
+    // One visual rule everywhere: the complete target docks just outside the
+    // composer. It cannot cover typed text or compete with the host's action
+    // row, and the same affordance now reads consistently on every AI site.
+    const placementMode = 'external' as const;
+    const compatibilityReacquisition = needsCompatibilityReacquisition(
       location.hostname,
       location.pathname,
     );
@@ -258,6 +262,18 @@ export default defineContentScript({
           slot = 'inside',
         ) => {
           currentCorner = corner;
+          // Pins created by older inside-placement builds can point at a host
+          // control or even a page corner. The external engine reprojects
+          // them; retire the obsolete coordinate so it cannot keep biasing
+          // future placement after resize or reload.
+          if (pin && !slot.startsWith('pinned')) {
+            pin = null;
+            void sendMessage({
+              type: 'siteRule:patch',
+              origin: location.origin,
+              patch: { buttonPin: null },
+            }).catch(() => undefined);
+          }
           if (!button) return;
           button.setPlacement(slot);
           button.wrap.hidden = !visible;
@@ -299,7 +315,7 @@ export default defineContentScript({
         pinnedOffset: () => pin,
         isPlacementLocked: () => manualDrag,
         placementMode: () => placementMode,
-        ...(placementMode === 'external'
+        ...(compatibilityReacquisition
           ? {
               fallbackField: () =>
                 findCompatibilityComposer(

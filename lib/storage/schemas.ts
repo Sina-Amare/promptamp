@@ -127,13 +127,12 @@ export const siteRuleSchema = z.object({
   hidden: z.boolean().default(false),
   /** Set by "On this site, use…" — drops the `auto` suffix on the chip. */
   pinnedProfileId: z.string().max(64).nullable().default(null),
-  /** Where the user dragged the button. Only snapped corners persist. */
+  /** Legacy corner preference, retained for storage compatibility. */
   buttonCorner: buttonCornerSchema.nullable().default(null),
   /**
-   * The exact spot the user dragged the disc to on this site, as an offset
-   * from the field's bottom-right corner (bottom-anchored, so a growing draft
-   * cannot move it). When set it outranks every placement rule: the user is
-   * the final authority on their own screen.
+   * The exact exterior spot the user dragged the launcher to on this site, as
+   * an offset from the composer shell's bottom-right. Unsafe, inside, or
+   * detached legacy pins are reprojected and retired without a schema change.
    */
   buttonPin: z
     .object({

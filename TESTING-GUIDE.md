@@ -4,7 +4,7 @@ A guided pass, about 20 minutes. It is ordered so that anything broken shows up
 early, and so you never have to guess whether something is a bug or the design.
 
 Automated tests already cover the pipeline, the insertion ladder, the fallback
-chain, and accessibility — 331 unit tests and 108 end-to-end tests against a real
+chain, and accessibility — 331 unit tests and 109 end-to-end tests against a real
 loaded extension. What they *cannot* cover is a real logged-in site with a real
 model behind a real key. That is what this pass is for.
 
@@ -72,10 +72,10 @@ Midjourney, Reddit, Gmail.
 
 1. Click into the message box and type a rough draft, e.g.
    `tips for a job interview`
-2. A small dial button appears in the corner of the field.
+2. A small PromptAmp tab appears immediately beside the field.
 
-   ✅ It should sit inside the field, not cover the send button, and not fight
-   with the site's own icons.
+   ✅ Its complete target should sit outside but remain attached to the field,
+   never covering text, the send button, or the site's own icons.
 
 3. Press it.
 
