@@ -17,7 +17,7 @@ import {
 } from '../messaging/protocol';
 import { sendMessage } from '../messaging/client';
 import { t } from '../i18n';
-import { shellRect } from './position';
+import { composerShell } from './position';
 import { createPanel, type PanelHandle } from './panel';
 import { createSmoothStream, type SmoothStream } from './panel/stream';
 
@@ -192,9 +192,23 @@ export function createSession(
     // offset from the editable's top lands on the box itself (the overlap seen
     // live on ChatGPT). A virtual reference re-reads the shell every update,
     // so it also tracks the box as a long draft grows.
+    // Resolve the composer shell once and reuse the element, re-reading only its
+    // rect each tick. composerShell is a ≤12-hop walk that calls
+    // getComputedStyle per ancestor; autoUpdate would otherwise re-run it on
+    // every scroll/resize while the panel is open. Re-resolve only if the cached
+    // element leaves the DOM (the composer restructured under us).
+    let cachedShell: Element | null = null;
+    const resolveShell = (): Element => {
+      if (!cachedShell?.isConnected) {
+        cachedShell = composerShell(
+          deps.field,
+          deps.field.getBoundingClientRect(),
+        );
+      }
+      return cachedShell;
+    };
     const shellRef = {
-      getBoundingClientRect: () =>
-        shellRect(deps.field, deps.field.getBoundingClientRect()),
+      getBoundingClientRect: () => resolveShell().getBoundingClientRect(),
       contextElement: deps.field,
     };
 

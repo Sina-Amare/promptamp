@@ -148,6 +148,13 @@ export async function insertText(
   ) {
     await modelEditor.replace(originalModel.value);
   } else if (!matchesSnapshot(el, snapshot)) {
+    // For a model editor whose original we could not read, this restores only
+    // the DOM element (Monaco/CodeMirror's hidden textarea), which the editor
+    // ignores — but its model was never touched either: the fallback tiers
+    // write that textarea, not the model, so a failed model read leaves the
+    // visible document unchanged. The clipboard fallback below still hands the
+    // user their text. There is no safe model-level restore without the
+    // original value (writing an empty snapshot would wipe live content).
     restoreField(el, snapshot);
   }
 

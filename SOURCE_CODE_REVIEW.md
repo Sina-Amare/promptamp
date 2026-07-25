@@ -73,6 +73,17 @@ for Monaco and CodeMirror. It exposes only bounded read and whole-model replace
 operations for the active editor and returns exact model readback; it cannot
 access extension storage, provider data, keys, or prompt instructions.
 
+**Trust boundary (deliberate).** The isolated content script and the MAIN-world
+script communicate over same-window `postMessage` (`lib/insertion/bridge.ts`),
+which shares the page's own trust domain. A malicious page could observe or spoof
+a bridge message — but it can already manipulate its own editor arbitrarily, so
+this grants it nothing new. No extension privilege, storage, key, or prompt
+instruction crosses the bridge; the only payload is the enhanced prompt the user
+is about to insert into that same editor, and it is shown in the preview panel
+for explicit approval **before** any insertion. A same-window nonce cannot defend
+against a script in the same realm, so the boundary is documented rather than
+"hardened" with false assurances.
+
 ### 2. Keys are unreachable from content scripts — `lib/storage/credentials.ts`
 
 That module is the only reader of API keys and runs exclusively in the
