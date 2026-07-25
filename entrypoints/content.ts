@@ -12,6 +12,11 @@ import {
 import { requestMainWorldEditor } from '../lib/insertion/bridge';
 import { createButton, type ButtonHandle } from '../lib/ui/button';
 import { BUTTON_CSS } from '../lib/ui/button/styles';
+import {
+  CALLOUT_CSS,
+  createCallout,
+  type CalloutHandle,
+} from '../lib/ui/callout';
 import { createShadowHost, el } from '../lib/ui/host';
 import { PANEL_CSS } from '../lib/ui/panel/styles';
 import { createSession, type EnhanceSession } from '../lib/ui/session';
@@ -70,7 +75,7 @@ export default defineContentScript({
     });
 
     const sheet = new CSSStyleSheet();
-    sheet.replaceSync(`${BUTTON_CSS}\n${PANEL_CSS}`);
+    sheet.replaceSync(`${BUTTON_CSS}\n${PANEL_CSS}\n${CALLOUT_CSS}`);
     host.root.adoptedStyleSheets = [...host.root.adoptedStyleSheets, sheet];
 
     const layer = el('div', { class: 'pa-button-layer' });
@@ -128,6 +133,11 @@ export default defineContentScript({
     let button: ButtonHandle | null = null;
     let session: EnhanceSession | null = null;
     let currentCorner: ButtonCorner | null = null;
+    let callout: CalloutHandle | null = null;
+    // The one-time first-run onboarding (§4): shown on the first qualifying
+    // focus ever, globally. Flip it off the instant it shows so it never repeats
+    // even before the persisted flag round-trips.
+    let firstRunPending = !suppression.firstRunDone;
 
     let beginEpoch = 0;
     async function beginEnhance(field: HTMLElement): Promise<void> {
@@ -254,8 +264,34 @@ export default defineContentScript({
             },
           });
           layer.append(button.wrap);
+
+          // First-run onboarding (§4): shown once, globally, on the first
+          // qualifying focus. Flip the flag and persist immediately so it never
+          // repeats even before the write round-trips. Anchored to the disc; no
+          // focus steal — the user just clicked into their field.
+          if (firstRunPending) {
+            firstRunPending = false;
+            void sendMessage({
+              type: 'settings:patch',
+              patch: { firstRunDone: true },
+            }).catch(() => undefined);
+            callout = createCallout({
+              onGotIt: () => {
+                callout?.destroy();
+                callout = null;
+              },
+              onHideSite: () => {
+                callout?.destroy();
+                callout = null;
+                void handleDismiss('site');
+              },
+            });
+            button.wrap.append(callout.element);
+          }
         },
         onDetach: () => {
+          callout?.destroy();
+          callout = null;
           button?.destroy();
           button = null;
         },
@@ -417,6 +453,8 @@ export default defineContentScript({
       session = null;
       beginEpoch++;
       tracker.stop();
+      callout?.destroy();
+      callout = null;
       button?.destroy();
       button = null;
       host.destroy();
@@ -432,6 +470,9 @@ interface Suppression {
   origin: string;
   corner: ButtonCorner | null;
   pin: { dx: number; dy: number } | null;
+  /** Whether the one-time first-run callout has already been shown (§4). Only
+   *  read on the non-suppressed path. */
+  firstRunDone?: boolean;
 }
 
 /**
@@ -468,6 +509,7 @@ async function loadSuppression(): Promise<Suppression | null> {
       origin,
       corner: rule.buttonCorner,
       pin: rule.buttonPin,
+      firstRunDone: settings.firstRunDone,
     };
   } catch {
     // Unreachable *this attempt*. In MV3 an asleep worker is the normal case

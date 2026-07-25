@@ -140,7 +140,8 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
     suppressClick = false;
     clearTimeout(suppressClickTimer);
     if (event.button !== 0) return;
-    if ((event.target as Element).closest('.pa-dismiss, .pa-menu')) return;
+    if ((event.target as Element).closest('.pa-dismiss, .pa-menu, .pa-callout'))
+      return;
     cancelActiveDrag?.();
     const startX = event.clientX;
     const startY = event.clientY;

@@ -38,6 +38,10 @@ export const en = {
   'menu.cancel': 'Cancel',
   'menu.settings': 'PromptAmp settings…',
 
+  /* ── the first-run callout (§4) ───────────────────────────────── */
+  'callout.body': 'PromptAmp can sharpen this prompt · Alt+E',
+  'callout.gotIt': 'Got it',
+
   /* ── the preview panel (§2) ───────────────────────────────────── */
   'panel.title': 'Enhanced prompt',
   'panel.bodyAria': 'Enhanced prompt, editable',
