@@ -585,6 +585,24 @@ describe('anthropic adapter', () => {
     });
   });
 
+  it('labels a reply truncated to empty content as too-long, not a refusal', async () => {
+    // max_tokens that produced no text is a length problem ("shorten the
+    // draft"), not a refusal ("reword it") — truncation must be checked before
+    // emptiness or the user gets the wrong remedy.
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse({ content: [], stop_reason: 'max_tokens' }),
+        ),
+    );
+
+    await expect(anthropicAdapter(request('anthropic'))).rejects.toMatchObject({
+      kind: 'too-long',
+    });
+  });
+
   it('surfaces an Anthropic stream error frame', async () => {
     vi.stubGlobal(
       'fetch',

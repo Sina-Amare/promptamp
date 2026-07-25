@@ -97,13 +97,16 @@ export const anthropicAdapter = async (
 
   const text = flattenContent(parsed.content);
 
-  if (!text.trim()) throw errorFor('refusal');
-
+  // Truncation before emptiness: a reply cut off at max_tokens (even to nothing)
+  // is a length problem whose remedy is "shorten the draft" — not a refusal,
+  // whose remedy is "reword the draft" and would not help. Better to fail than
+  // hand back a rewrite that stops mid-sentence; the draft stays untouched
+  // either way (principle 8).
   if (parsed.stop_reason === 'max_tokens') {
-    // Better to fail than to hand back a rewrite that stops mid-sentence —
-    // the draft stays untouched either way (principle 8).
     throw errorFor('too-long', 'The rewrite was cut off. Try a shorter draft.');
   }
+
+  if (!text.trim()) throw errorFor('refusal');
 
   return {
     text,
@@ -164,10 +167,10 @@ async function readAnthropicSse(
       'The model declined to rewrite this draft.',
     );
   }
-  if (!text.trim()) throw errorFor('refusal');
   if (stopReason === 'max_tokens') {
     throw errorFor('too-long', 'The rewrite was cut off. Try a shorter draft.');
   }
+  if (!text.trim()) throw errorFor('refusal');
 
   return {
     text,
