@@ -170,22 +170,29 @@
           <label id="claude-label"
             >Claude-style (row below, grows upward)</label
           >
-          <div class="chat-shell" data-testid="claude-shell">
-            <div
-              class="chat-editable"
-              data-testid="claude-editable"
-              contenteditable="true"
-              role="textbox"
-              aria-multiline="true"
-              aria-labelledby="claude-label"
-            ></div>
-            <div class="chat-row">
-              <button type="button" class="chat-btn">+</button>
-              <button type="button" class="chat-btn">▣</button>
-              <span class="chat-spacer"></span>
-              <button type="button" class="chat-model">Opus 4.8 Max ▾</button>
-              <button type="button" class="chat-btn">🎤</button>
-              <button type="button" class="chat-send">↑</button>
+          <!-- Live claude.ai DOM: the rounded box (bg + radius) only paints;
+               the editable and the send/model row sit in a TRANSPARENT inner
+               flex column (m-3.5) whose right edge is flush with the send
+               button. The painted box extends ~15px past the row. Docking must
+               resolve the painted box, not the flush inner column. -->
+          <div class="chat-shell claude-shell" data-testid="claude-shell">
+            <div class="claude-content">
+              <div
+                class="chat-editable"
+                data-testid="claude-editable"
+                contenteditable="true"
+                role="textbox"
+                aria-multiline="true"
+                aria-labelledby="claude-label"
+              ></div>
+              <div class="chat-row">
+                <button type="button" class="chat-btn">+</button>
+                <button type="button" class="chat-btn">▣</button>
+                <span class="chat-spacer"></span>
+                <button type="button" class="chat-model">Opus 4.8 Max ▾</button>
+                <button type="button" class="chat-btn">🎤</button>
+                <button type="button" class="chat-send">↑</button>
+              </div>
             </div>
           </div>
         </article>

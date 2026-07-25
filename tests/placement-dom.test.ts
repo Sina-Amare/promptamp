@@ -132,6 +132,54 @@ describe('shipping composer placement', () => {
     expect(Math.hypot(gapX, gapY)).toBeLessThanOrEqual(8);
   });
 
+  it('docks to the painted box, not the transparent inner column that hugs the send button (live Claude)', () => {
+    // Live claude.ai: a painted rounded box (the visible composer) wraps a
+    // TRANSPARENT flex column holding the editable above the control row. The
+    // column's right edge is flush with the send button, so anchoring to it
+    // made a zero-gap dock collide with send and cascade the disc into the dead
+    // space below. The shell must resolve to the painted box (right 806), whose
+    // padding clears the send button (right 791).
+    document.body.innerHTML = `
+      <div id="box" style="background-color: rgb(44, 44, 42); border-radius: 20px">
+        <div id="column">
+          <div id="field" contenteditable="true"></div>
+          <div id="row">
+            <button id="plus">+</button>
+            <button id="model">Opus 4.8 Max</button>
+            <button id="mic">Mic</button>
+            <button id="send">Send</button>
+          </div>
+        </div>
+      </div>`;
+    const box = document.getElementById('box')!;
+    const field = document.getElementById('field')!;
+    setRect(box, rect(38, 543, 768, 130)); // right 806, bottom 673
+    setRect(document.getElementById('column')!, rect(53, 558, 738, 101)); // right 791
+    setRect(field, rect(59, 564, 732, 22)); // editable above the row
+    setRect(document.getElementById('row')!, rect(55, 598, 736, 32));
+    setRect(document.getElementById('plus')!, rect(55, 598, 32, 32));
+    setRect(document.getElementById('model')!, rect(553, 598, 118, 32));
+    setRect(document.getElementById('mic')!, rect(679, 598, 32, 32));
+    setRect(document.getElementById('send')!, rect(759, 598, 32, 32)); // right 791, flush with column
+
+    const placement = placeButton(
+      field,
+      'ltr',
+      40,
+      null,
+      () => false,
+      null,
+      'external',
+    );
+
+    // The visible painted box is the shell — not the inner control column.
+    expect(placement.anchor).toBe(box);
+    // Docks to the right edge on the control row, never the dead space below.
+    expect(placement.slot).toBe('outside-right');
+    expect(placement.point.left).toBe(box.getBoundingClientRect().right);
+    expect(placement.visible).toBe(true);
+  });
+
   it('keeps the compatibility launcher visible outside a delegated page surface', () => {
     document.body.innerHTML = `
       <main id="delegated" style="cursor:pointer">

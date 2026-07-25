@@ -200,6 +200,11 @@ test('an empty tall composer uses the universal outside dock', async ({
     null,
   );
   await expect(wrap).toHaveAttribute('data-placement', 'outside');
+  // Regression lock: the disc must dock to the composer's RIGHT edge on the
+  // control-row line. The live bug parked it in the dead space below the box
+  // because the shell resolved to the transparent inner column, not the
+  // painted box — `dockSide` accepting `below` hid it, so assert the side.
+  await expect(wrap).toHaveAttribute('data-side', 'right');
   for (const control of await page
     .getByTestId('claude-shell')
     .locator('button')

@@ -217,6 +217,22 @@ button[data-testid='close-dialog'] {
   white-space: pre-wrap;
 }
 
+/* Claude: the rounded box only paints; its content (editable + control row)
+   lives in a transparent inner column inset by a margin, so the send button's
+   right edge is flush with the column — not the visible box. The painted box
+   is the real dock target. */
+.claude-shell {
+  padding: 0;
+  border-radius: 20px;
+}
+
+.claude-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px;
+}
+
 /* ChatGPT caps the text block and scrolls it internally on long drafts. */
 .gpt-scroll {
   max-height: 140px;

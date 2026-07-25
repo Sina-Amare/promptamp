@@ -247,6 +247,7 @@ export function composerShell(field: Element, fieldBox: DOMRect): Element {
   field = visualEditorRoot(field);
   fieldBox = field.getBoundingClientRect();
   let fallback = field;
+  let controlShell: Element | null = null;
   let candidate: Element | null = composedParentElement(field);
   for (let hops = 0; candidate && hops < 12; hops++) {
     if (candidate === document.body || candidate === document.documentElement) {
@@ -273,18 +274,30 @@ export function composerShell(field: Element, fieldBox: DOMRect): Element {
       continue;
     }
 
-    const hasVisibleControl =
-      visibleControlElements(candidate, field, () => false).length > 0;
-    if (hasVisibleControl) return candidate;
-
     const style = globalThis.getComputedStyle(candidate);
-    // Custom-element composers do not always expose semantic buttons. Their
-    // rounded painted surface is still a durable, site-agnostic shell signal.
-    // This is what identifies Gemini's outer pill when its controls live in
-    // separate custom elements.
+    // The painted, rounded composer box is the strongest shell signal — it is
+    // the boundary the user actually sees, and it carries the padding that
+    // keeps a zero-gap side dock clear of the outermost controls. Prefer it
+    // over a tighter inner control column: Claude nests its send/model row in a
+    // TRANSPARENT flex column whose right edge hugs the send button, so docking
+    // to that column lands the disc flush on the control (DOCK_GAP is 0) and
+    // the collision test cascades the disc into the dead space below the box.
+    // Custom-element composers (Gemini) also rely on this: their controls live
+    // in separate elements, so only the painted surface identifies the shell.
     const hasComposerPadding =
       box.height >= fieldBox.height + 12 || box.width >= fieldBox.width + 24;
     if (hasComposerPadding && paintsComposerSurface(style)) return candidate;
+
+    // A control-bearing ancestor that paints nothing is a fallback shell only:
+    // remember the first, but keep walking in case the painted box is one hop
+    // out (Claude's rounded container around the transparent column).
+    const hasVisibleControl =
+      visibleControlElements(candidate, field, () => false).length > 0;
+    if (hasVisibleControl) {
+      controlShell ??= candidate;
+      candidate = composedParentElement(candidate);
+      continue;
+    }
 
     const clips = /(auto|scroll|hidden|clip)/.test(
       `${style.overflow}${style.overflowX}${style.overflowY}`,
@@ -299,7 +312,7 @@ export function composerShell(field: Element, fieldBox: DOMRect): Element {
     }
     candidate = composedParentElement(candidate);
   }
-  return fallback;
+  return controlShell ?? fallback;
 }
 
 export function shellRect(field: Element, fieldBox: DOMRect): DOMRect {
