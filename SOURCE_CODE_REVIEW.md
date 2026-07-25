@@ -38,7 +38,7 @@ Output: `.output/promptamp-<version>-firefox.zip`
 ```bash
 pnpm typecheck   # tsc --noEmit, strict
 pnpm lint        # ESLint, including the rule that blocks key access from content scripts
-pnpm test        # 331 unit tests
+pnpm test        # 338 unit tests
 pnpm e2e         # 110 end-to-end tests against a real loaded extension
 ```
 
