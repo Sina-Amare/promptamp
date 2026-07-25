@@ -265,13 +265,16 @@ export default defineContentScript({
           instant = false,
           visible = true,
           slot = 'inside',
+          retirePin = false,
         ) => {
           currentCorner = corner;
-          // Pins created by older inside-placement builds can point at a host
-          // control or even a page corner. The external engine reprojects
-          // them; retire the obsolete coordinate so it cannot keep biasing
-          // future placement after resize or reload.
-          if (pin && !slot.startsWith('pinned')) {
+          // A dragged pin is the user's explicit choice, so keep it even when
+          // the engine reprojects it off a control this frame — it snaps back
+          // once the control clears. Forget it ONLY when the engine reports it
+          // structurally stale: an inside-era coordinate or a page corner far
+          // from the composer. Deleting on any transient miss was the "I drag
+          // the disc and it won't stick" bug.
+          if (pin && retirePin) {
             pin = null;
             void sendMessage({
               type: 'siteRule:patch',

@@ -206,6 +206,12 @@ export interface PlacementResult {
   visible: boolean;
   /** True when no safe slot exists. The button is hidden, never forced over UI. */
   forced: boolean;
+  /**
+   * True only when a supplied pin is structurally stale — absurdly far from the
+   * composer — and should be forgotten. A live pin merely occluded by a control
+   * this frame is NOT stale: it reprojects for the frame but must survive.
+   */
+  pinStale: boolean;
 }
 
 const HOST_CONTROL_SELECTOR =
@@ -714,6 +720,29 @@ function isPinnedPointSafe(
 }
 
 /**
+ * A supplied pin is worth *forgetting* only when it is structurally stale: an
+ * inside-era coordinate reprojected to the viewport edge, or a page corner far
+ * from the composer. A live pin merely covered by a control this frame is NOT
+ * stale — it reprojects for the frame but must survive in storage so it snaps
+ * back when the control clears. Deleting on any transient miss is exactly the
+ * "I drag the disc and it won't stick" bug.
+ */
+function pinIsStale(point: Point, size: number, shellBox: DOMRect): boolean {
+  const candidate = pointRect(point, size);
+  const gapX = Math.max(
+    shellBox.left - candidate.right,
+    candidate.left - shellBox.right,
+    0,
+  );
+  const gapY = Math.max(
+    shellBox.top - candidate.bottom,
+    candidate.top - shellBox.bottom,
+    0,
+  );
+  return Math.hypot(gapX, gapY) > MAX_EXTERNAL_PIN_GAP;
+}
+
+/**
  * Validate a complete hit target at a proposed point. Exported so the tracker
  * can retain its prior slot until that slot genuinely becomes invalid.
  */
@@ -794,6 +823,13 @@ export function placeButton(
   const box = field.getBoundingClientRect();
   const anchor = composerShell(field, box);
   const anchorBox = anchor.getBoundingClientRect();
+  // Whether a supplied pin should be forgotten (structurally stale) rather than
+  // just reprojected for this frame. Computed once; false in every honored or
+  // no-pin case (an honored pin already cleared the same gap check).
+  const pinStale =
+    preferredPoint !== null &&
+    mode === 'external' &&
+    pinIsStale(preferredPoint, size, anchorBox);
   const rect: Rect = {
     top: anchorBox.top,
     left: anchorBox.left,
@@ -892,6 +928,7 @@ export function placeButton(
           : 'pinned-free',
       visible: true,
       forced: false,
+      pinStale,
     };
   }
 
@@ -923,6 +960,7 @@ export function placeButton(
       slot: selected.slot,
       visible: true,
       forced: false,
+      pinStale,
     };
   }
 
@@ -997,6 +1035,7 @@ export function placeButton(
       slot: selected.slot,
       visible: true,
       forced: false,
+      pinStale,
     };
   }
 
@@ -1022,6 +1061,7 @@ export function placeButton(
         slot: fallback.slot,
         visible: true,
         forced: true,
+        pinStale,
       };
     }
   }
@@ -1044,6 +1084,7 @@ export function placeButton(
     slot: 'hidden',
     visible: false,
     forced: true,
+    pinStale,
   };
 }
 

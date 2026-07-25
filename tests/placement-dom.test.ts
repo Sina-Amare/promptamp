@@ -247,6 +247,40 @@ describe('shipping composer placement', () => {
     ).toBe(false);
   });
 
+  it('flags a far pin stale but keeps a near pin merely occluded by a control', () => {
+    document.body.innerHTML =
+      '<div id="shell" style="background-color: rgb(32, 32, 32); border-radius: 20px"><input id="field" aria-label="Ask" /><button id="send">Send</button></div>';
+    const field = document.getElementById('field')!;
+    setRect(document.getElementById('shell')!, rect(200, 300, 600, 60)); // right 800
+    setRect(field, rect(220, 316, 480, 24));
+    setRect(document.getElementById('send')!, rect(752, 310, 40, 40));
+
+    // A near pin sitting on the send button: reprojected this frame, but NOT
+    // stale — it must survive so it snaps back when the control clears.
+    const near = placeButton(
+      field,
+      'ltr',
+      40,
+      null,
+      () => false,
+      { top: 316, left: 756 },
+      'external',
+    );
+    expect(near.pinStale).toBe(false);
+
+    // A page-corner pin far from the composer is structurally stale: retire it.
+    const far = placeButton(
+      field,
+      'ltr',
+      40,
+      null,
+      () => false,
+      { top: 0, left: 0 },
+      'external',
+    );
+    expect(far.pinStale).toBe(true);
+  });
+
   it('uses the empty top corner of a tall painted composer surface', () => {
     document.body.innerHTML = `
       <div id="shell" style="background-color: rgb(32, 32, 32); border-radius: 28px">

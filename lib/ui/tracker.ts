@@ -56,6 +56,9 @@ export interface TrackerCallbacks {
     visible?: boolean,
     /** Stable slot identity, also used for placement-aware button styling. */
     slot?: string,
+    /** True only when a supplied pin is structurally stale and should be
+     *  forgotten. A transiently occluded pin reprojects without this set. */
+    retirePin?: boolean,
   ) => void;
   /** Draft content changed — drives ghost/idle/typing. */
   onDraftChange: (draft: string, enhanceable: boolean) => void;
@@ -308,6 +311,7 @@ export function createFieldTracker(
       false,
       placement.visible,
       placement.slot,
+      placement.pinStale,
     );
   }
 
@@ -347,6 +351,7 @@ export function createFieldTracker(
       false,
       placement.visible,
       placement.slot,
+      placement.pinStale,
     );
     emitDraft();
 
