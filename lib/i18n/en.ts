@@ -59,6 +59,9 @@ export const en = {
   'panel.copy': 'Copy',
   'panel.retry': 'Retry',
   'panel.discard': 'Discard',
+  'panel.counter': '{current} of {total}',
+  'panel.alreadyGood':
+    'Already looks good — try Adjust for a different direction.',
   'panel.showChanges': 'Show changes',
   'panel.showOriginal': 'Original',
   'panel.adjustPlaceholder': 'Describe a change…',

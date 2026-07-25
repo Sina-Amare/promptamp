@@ -22,6 +22,16 @@ import { createPanel, type PanelHandle } from './panel';
 import { createSmoothStream, type SmoothStream } from './panel/stream';
 
 /**
+ * Per-enhance diagnostics printed to the HOST page's console — dev builds only.
+ * A store build must stay quiet in a page it does not own; `import.meta.env.DEV`
+ * is replaced with `false` at production build time, so this collapses to a
+ * no-op. The error path keeps `console.warn` for real-world field diagnostics.
+ */
+const debug: (...args: unknown[]) => void = import.meta.env.DEV
+  ? console.info.bind(console)
+  : () => undefined;
+
+/**
  * One enhancement, from button press to accepted insertion.
  *
  * Owns the latency script (UX-SPEC §2.3), which is mostly about *not* showing
@@ -278,7 +288,7 @@ export function createSession(
     firstChunkSeen = false;
     const epoch = ++runEpoch;
     let settled = false;
-    console.info('[PromptAmp] enhance start', {
+    debug('[PromptAmp] enhance start', {
       origin: deps.origin,
       profileId: opts.profileId ?? 'auto',
       ...(opts.adjust ? { adjust: opts.adjust } : {}),
@@ -326,7 +336,7 @@ export function createSession(
           clearTimeout(skeletonTimer);
           if (!firstChunkSeen) {
             firstChunkSeen = true;
-            console.info('[PromptAmp] streaming…');
+            debug('[PromptAmp] streaming…');
           }
           rawSoFar += message.text;
           // Hold the reveal back only while the output could still be the
@@ -362,7 +372,7 @@ export function createSession(
         case 'done':
           settled = true;
           clearTimeout(skeletonTimer);
-          console.info(
+          debug(
             '[PromptAmp] done',
             message.result.declined
               ? 'declined'

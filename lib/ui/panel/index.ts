@@ -793,7 +793,10 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
 
   function renderCarousel(): void {
     carousel.hidden = versions.length < 2;
-    counter.textContent = `${String(index + 1)} of ${String(versions.length)}`;
+    counter.textContent = t('panel.counter', {
+      current: String(index + 1),
+      total: String(versions.length),
+    });
     prevBtn.disabled = index === 0;
     nextBtn.disabled = index === versions.length - 1;
   }
@@ -882,9 +885,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
         const previous = versions[index]?.text;
         if (previous !== undefined && normalise(previous) === normalise(text)) {
           // Silent no-op regeneration reads as broken. Say so instead.
-          showNoticeInternal(
-            'Already looks good — try Adjust for a different direction.',
-          );
+          showNoticeInternal(t('panel.alreadyGood'));
           return;
         }
 
@@ -921,7 +922,7 @@ export function createPanel(callbacks: PanelCallbacks): PanelHandle {
           attrs: { type: 'button' },
           text: error.retryAfterSec
             ? t('error.retryIn', { seconds: error.retryAfterSec })
-            : 'Retry',
+            : t('panel.retry'),
         });
         retry.addEventListener('click', () => {
           callbacks.onRetry();

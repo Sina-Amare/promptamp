@@ -4,21 +4,26 @@ import { createCallout } from '../lib/ui/callout';
 
 describe('first-run callout', () => {
   it('renders the intro and exactly two actions', () => {
-    const callout = createCallout({ onGotIt: () => {}, onHideSite: () => {} });
-    expect(callout.element.querySelector('.pa-callout-body')?.textContent).toContain(
-      'sharpen',
-    );
+    const callout = createCallout({
+      onGotIt: () => undefined,
+      onHideSite: () => undefined,
+    });
+    expect(
+      callout.element.querySelector('.pa-callout-body')?.textContent,
+    ).toContain('sharpen');
     expect(callout.element.querySelectorAll('button')).toHaveLength(2);
     // No string-HTML sinks: everything is real elements built with textContent.
     expect(callout.element.querySelector('.pa-callout-primary')).not.toBeNull();
-    expect(callout.element.querySelector('.pa-callout-secondary')).not.toBeNull();
+    expect(
+      callout.element.querySelector('.pa-callout-secondary'),
+    ).not.toBeNull();
   });
 
   it('fires onGotIt from the primary button and from Escape', () => {
     let gotIt = 0;
     const callout = createCallout({
       onGotIt: () => (gotIt += 1),
-      onHideSite: () => {},
+      onHideSite: () => undefined,
     });
     document.body.append(callout.element);
 
@@ -36,7 +41,7 @@ describe('first-run callout', () => {
   it('fires onHideSite from the secondary button (the in-intro opt-out)', () => {
     let hide = 0;
     const callout = createCallout({
-      onGotIt: () => {},
+      onGotIt: () => undefined,
       onHideSite: () => (hide += 1),
     });
     callout.element
@@ -46,7 +51,10 @@ describe('first-run callout', () => {
   });
 
   it('destroy() removes it from the DOM', () => {
-    const callout = createCallout({ onGotIt: () => {}, onHideSite: () => {} });
+    const callout = createCallout({
+      onGotIt: () => undefined,
+      onHideSite: () => undefined,
+    });
     document.body.append(callout.element);
     expect(callout.element.isConnected).toBe(true);
     callout.destroy();
