@@ -133,6 +133,12 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
   let cancelActiveDrag: (() => void) | null = null;
 
   wrap.addEventListener('pointerdown', (event) => {
+    // A prior drop's click-swallow guard is stale once a new press begins — its
+    // click has already fired or never will. Clearing it here stops a
+    // main-thread stall from carrying the guard into this gesture and eating a
+    // real click, on the disc or a dismiss-menu item.
+    suppressClick = false;
+    clearTimeout(suppressClickTimer);
     if (event.button !== 0) return;
     if ((event.target as Element).closest('.pa-dismiss, .pa-menu')) return;
     cancelActiveDrag?.();
@@ -321,6 +327,7 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
 
   let menu: HTMLElement | null = null;
   let menuPositionRaf = 0;
+  let menuCleanup: (() => void) | null = null;
 
   function positionMenu(): void {
     if (!menu) return;
@@ -372,6 +379,8 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
     }
     globalThis.removeEventListener('resize', scheduleMenuPosition);
     globalThis.removeEventListener('scroll', scheduleMenuPosition, true);
+    menuCleanup?.();
+    menuCleanup = null;
     menu?.remove();
     menu = null;
     dismiss.setAttribute('aria-expanded', 'false');
@@ -432,6 +441,19 @@ export function createButton(callbacks: ButtonCallbacks): ButtonHandle {
       capture: true,
       passive: true,
     });
+    // Light dismiss: any pointer outside the menu or the × closes it. Use
+    // composedPath(), not target — a shadow-tree event is retargeted to the
+    // host by the time it reaches the document, so target is never the menu
+    // and a contains() check would fire on the menu's own clicks.
+    const onOutside = (event: Event): void => {
+      const path = event.composedPath();
+      if (menu && (path.includes(menu) || path.includes(dismiss))) return;
+      closeMenu();
+    };
+    document.addEventListener('pointerdown', onOutside, true);
+    menuCleanup = () => {
+      document.removeEventListener('pointerdown', onOutside, true);
+    };
     dismiss.setAttribute('aria-expanded', 'true');
     menu.querySelector('button')?.focus();
   }
