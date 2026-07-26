@@ -8,7 +8,7 @@
 
 Turn a rough draft into an engineered prompt with one tap, in any text field on any website.
 
-`🚧 Pre-release — v0.1.0, not yet in the stores`
+`v0.3.0 · Firefox review in progress · Chrome & Edge: load unpacked (below)`
 
 [Install](#install) · [Providers](#providers) · [Privacy](#privacy) · [FAQ](#faq)
 
@@ -26,6 +26,19 @@ the result next to the original, and replaces your text only when you accept.
 Nothing is sent anywhere except the provider you chose. There is no PromptAmp
 server to send it to.
 
+## See it
+
+**Keeps what you paste, sharpens only what you ask** — paste code, a log, or a
+document with a rough request and your content is reproduced byte-for-byte, in
+any language:
+
+![PromptAmp keeps pasted code exactly and engineers only the request, in English and Persian.](assets/readme/preserve.png)
+
+**Any rough idea, in any language** — even a half-formed Persian thought becomes
+a clean, engineered prompt (optionally in a different language than you wrote it):
+
+![A rough English draft and a rough Persian draft, each turned into a polished prompt.](assets/readme/languages.png)
+
 ## Why it's different
 
 - **BYOK — bring your own key.** Your key is stored in this browser's local
@@ -39,6 +52,10 @@ server to send it to.
 - **Your draft is never touched until you accept.** Not on error, not on
   timeout, not if the model refuses. If insertion fails halfway, the field is
   restored from a snapshot.
+- **Keeps what you paste.** Bundle code, a log, or a whole document with a rough
+  request and PromptAmp reproduces it byte-for-byte — only the ask gets
+  engineered. Works the same whether you write in English, Persian, or anything
+  else.
 - **Domain-aware profiles.** An image prompt is not a code prompt is not a study
   prompt. Seven built-in profiles, all forkable.
 - **No servers, no telemetry, no accounts, no analytics.** Ever. The code is
