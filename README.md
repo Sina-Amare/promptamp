@@ -8,7 +8,7 @@
 
 Turn a rough draft into an engineered prompt with one tap, in any text field on any website.
 
-`v0.3.0 · Firefox review in progress · Chrome & Edge: load unpacked (below)`
+`v0.4.0 · Firefox review in progress · Chrome & Edge: load unpacked (below)`
 
 [Install](#install) · [Providers](#providers) · [Privacy](#privacy) · [FAQ](#faq)
 

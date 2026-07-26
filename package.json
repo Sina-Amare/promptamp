@@ -1,6 +1,6 @@
 {
   "name": "promptamp",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "BYOK browser extension that turns rough drafts into engineered prompts, in-place, on any site.",
