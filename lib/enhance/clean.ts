@@ -1,4 +1,4 @@
-import { DECLINE_SENTINEL } from '../messaging/protocol';
+import { DECLINE_SENTINEL } from '../messaging/sentinel';
 import { errorFor } from '../providers/errors';
 
 /**

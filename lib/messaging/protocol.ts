@@ -252,14 +252,9 @@ export interface EnhanceRequest {
 export type EnhanceClientMessage =
   ({ type: 'start' } & EnhanceRequest) | { type: 'cancel' };
 
-/**
- * What a profile emits, verbatim and alone, when the draft holds no request to
- * rewrite (keyboard-mashing, a stray fragment). It leads with a bracket no real
- * rewrite starts with, so the panel can recognise a decline from its first
- * character and never flash it mid-stream. The panel shows a friendly note and
- * leaves the draft untouched — it is never a prompt to send.
- */
-export const DECLINE_SENTINEL = '⟦NO_PROMPT⟧';
+// Re-exported from a leaf module so worker-only importers (clean()) can pull it
+// without dragging in this file's `#imports`/browser chain — see sentinel.ts.
+export { DECLINE_SENTINEL } from './sentinel';
 
 export interface EnhanceResult {
   text: string;

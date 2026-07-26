@@ -31,7 +31,7 @@ interface Case {
 }
 
 const PERSIAN = /[؀-ۿ]/;
-const LATIN_WORD = /\b[A-Za-z]{3,}\b/;
+const LATIN_WORD = /\b[A-Za-z]{3,}\b/g; // global: matchAll requires it
 
 const CASES: Case[] = [
   {
@@ -59,6 +59,49 @@ const CASES: Case[] = [
       out.length > draft.length * 2.2
         ? 'rewrote a draft that was already specific'
         : null,
+  },
+  {
+    name: 'pasted code is kept verbatim, only the request is rewritten',
+    profile: 'general',
+    draft:
+      'here is my code:\n```js\nfunction add(a, b) { return a + b }\n```\nmake it faster and add input validation',
+    check: (out) =>
+      out.includes('function add(a, b) { return a + b }')
+        ? null
+        : 'rewrote or dropped the pasted code instead of keeping it verbatim',
+  },
+  {
+    name: 'pasted text for feedback is kept verbatim (not just code)',
+    profile: 'general',
+    draft:
+      'give me feedback on this and how to improve it:\n\nThe internet changed how we communicate. People talk more but connect less.',
+    check: (out) =>
+      out.includes(
+        'The internet changed how we communicate. People talk more but connect less.',
+      )
+        ? null
+        : 'rewrote or generalized the pasted text instead of keeping it verbatim',
+  },
+  {
+    name: 'Persian request wrapping pasted code keeps the code and stays Persian',
+    profile: 'general',
+    draft:
+      'این کد منه، بهترش کن:\n```js\nconst total = items.reduce((s, x) => s + x.price, 0)\n```',
+    check: (out) => {
+      if (!out.includes('const total = items.reduce((s, x) => s + x.price, 0)'))
+        return 'dropped or rewrote the pasted code';
+      return PERSIAN.test(out) ? null : 'replied in English to a Persian draft';
+    },
+  },
+  {
+    name: '"improve this: <copy>" keeps the copy, never generalizes it away',
+    profile: 'general',
+    draft:
+      'improve this:\n\nOur product is the best. Buy it now. It has many features.',
+    check: (out) =>
+      out.includes('Our product is the best. Buy it now. It has many features.')
+        ? null
+        : 'generalized the pasted copy into a description instead of keeping it',
   },
   {
     name: 'answers the draft? (must NOT)',
@@ -265,10 +308,22 @@ if (env.OPENROUTER_API_KEY) {
     paceMs: 0,
   });
 }
+if (env.GEMINI_API_KEY) {
+  targets.push({
+    label: 'Gemini',
+    id: 'gemini',
+    // 2.5-flash, not the registry default 2.0-flash: the free 2.0 tier 429s
+    // immediately, while 2.5-flash has usable headroom for a battery run.
+    key: env.GEMINI_API_KEY,
+    model: env.GEMINI_MODEL ?? 'gemini-2.5-flash',
+    // The free 2.5-flash tier throttles bursts; pace ~5/min to avoid 429s.
+    paceMs: 12_000,
+  });
+}
 
 if (targets.length === 0) {
   console.error(
-    'No keys in .env — set GROQ_API_KEY and/or OPENROUTER_API_KEY.',
+    'No keys in .env — set GROQ_API_KEY, OPENROUTER_API_KEY, and/or GEMINI_API_KEY.',
   );
   process.exit(1);
 }
