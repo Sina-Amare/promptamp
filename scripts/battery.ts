@@ -26,6 +26,8 @@ interface Case {
   name: string;
   profile: string;
   draft: string;
+  /** Optional output-language override (as the panel's language chip sets it). */
+  outputLanguage?: string;
   /** Returns an error string when the rule is broken, or null when it holds. */
   check: (output: string, draft: string) => string | null;
 }
@@ -102,6 +104,25 @@ const CASES: Case[] = [
       out.includes('Our product is the best. Buy it now. It has many features.')
         ? null
         : 'generalized the pasted copy into a description instead of keeping it',
+  },
+  {
+    name: 'a name is kept in its original script when translating (Persian → English)',
+    profile: 'general',
+    draft: 'یه پرامپت بساز برای ساخت یه لوگو برای کافه‌ی من به اسم «دنج»',
+    outputLanguage: 'English',
+    check: (out) =>
+      out.includes('دنج')
+        ? null
+        : 'transliterated/translated the name «دنج» instead of keeping its script',
+  },
+  {
+    name: 'no invented timeframe/count when the user gave none',
+    profile: 'general',
+    draft: 'workout plan for me im beginner wanna lose weight',
+    check: (out) =>
+      /\b\d+[\s-]*(week|day|month)s?\b/i.test(out)
+        ? 'invented a specific timeframe the user never gave'
+        : null,
   },
   {
     name: 'answers the draft? (must NOT)',
@@ -251,7 +272,12 @@ async function runTarget(
     const profile = builtinProfile(testCase.profile);
     if (!profile) throw new Error(`unknown profile ${testCase.profile}`);
 
-    const { system, user } = assemble(profile, testCase.draft);
+    const { system, user } = assemble(
+      profile,
+      testCase.draft,
+      undefined,
+      testCase.outputLanguage,
+    );
 
     try {
       const raw = await callModel(providerId, apiKey, model, system, user);

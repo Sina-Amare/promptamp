@@ -204,6 +204,13 @@ describe('output language override', () => {
     expect(system).toMatch(/user-typed parameters/);
   });
 
+  it('keeps names and brands in their original script when translating', () => {
+    // Validated live: «دنج» stayed «دنج» (not "Donj") on a Persian→English run.
+    const { system } = assemble(GENERAL, 'draft text here', undefined, 'English');
+    expect(system).toMatch(/never translated or transliterated/i);
+    expect(system).toMatch(/original script/i);
+  });
+
   it('strips control characters, so it cannot forge a new section', () => {
     const { system } = assemble(
       GENERAL,
@@ -380,6 +387,14 @@ describe('profiles', () => {
       const prompt = builtinProfile(id)!.systemPrompt;
       expect(prompt).toContain('PASTED MATERIAL');
       expect(prompt).toMatch(/byte for byte/i);
+    }
+  });
+
+  it('forbids inventing a duration/count in the general-purpose profiles', () => {
+    // Validated live: "workout plan… lose weight" (no timeframe) stopped coming
+    // back as a "4-week plan". Locked so the port keeps the no-invent-duration rule.
+    for (const id of ['general', 'chat', 'learning'] as const) {
+      expect(builtinProfile(id)!.systemPrompt).toMatch(/duration/i);
     }
   });
 
