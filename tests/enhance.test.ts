@@ -371,6 +371,18 @@ describe('profiles', () => {
     }
   });
 
+  it('tells the general-purpose profiles to preserve pasted material verbatim', () => {
+    // The context-vs-request rule: pasted code / logs / documents are reproduced
+    // byte-for-byte while only the request is enhanced. Validated live against
+    // Gemini (English + Persian); locked here so a re-port cannot silently drop
+    // it. Image/video keep their own LITERAL LOCKBOX; learning has its Mode C.
+    for (const id of ['general', 'chat', 'writing', 'structured'] as const) {
+      const prompt = builtinProfile(id)!.systemPrompt;
+      expect(prompt).toContain('PASTED MATERIAL');
+      expect(prompt).toMatch(/byte for byte/i);
+    }
+  });
+
   it('translates only for the image and video profiles', () => {
     const english = BUILTIN_PROFILES.filter(
       (p) => p.outputLanguage === 'english-default',
