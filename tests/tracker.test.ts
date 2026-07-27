@@ -208,4 +208,76 @@ describe('field tracker resource ownership', () => {
     expect(onAttach).toHaveBeenCalledTimes(2);
     tracker.stop();
   });
+
+  it('hides the disc (onFieldLost) when its composer is removed and nothing replaces it', () => {
+    class FakeResizeObserver {
+      observe(): void {
+        return;
+      }
+      disconnect(): void {
+        return;
+      }
+    }
+    class FakeMutationObserver {
+      observe(): void {
+        return;
+      }
+      disconnect(): void {
+        return;
+      }
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    vi.stubGlobal('MutationObserver', FakeMutationObserver);
+
+    let safetyTick = (): void => {
+      throw new Error('The tracker interval was not installed.');
+    };
+    vi.spyOn(globalThis, 'setInterval').mockImplementation(((
+      callback: () => void,
+    ) => {
+      safetyTick = callback;
+      return 1;
+    }) as never);
+    vi.spyOn(globalThis, 'clearInterval').mockImplementation(() => undefined);
+
+    const field = document.createElement('textarea');
+    field.getBoundingClientRect = () => box(100);
+    document.body.append(field);
+    let fallback: HTMLElement | null = field;
+
+    const onFieldLost = vi.fn();
+    const onDetach = vi.fn();
+    const tracker = createFieldTracker(
+      {
+        onAttach: vi.fn(),
+        onDetach,
+        onMove: () => undefined,
+        onDraftChange: () => undefined,
+        onTypingChange: () => undefined,
+        onFieldTab: () => false,
+        onFieldLost,
+      },
+      {
+        buttonSize: 40,
+        isOwnNode: () => false,
+        preferredCorner: () => null,
+        pinnedOffset: () => null,
+        placementMode: () => 'external',
+        fallbackField: () => fallback,
+        isSuppressed: () => false,
+      },
+    );
+
+    tracker.start();
+    expect(tracker.current()).toBe(field);
+
+    // SPA route change: the composer leaves the DOM and nothing replaces it.
+    field.remove();
+    fallback = null;
+    safetyTick();
+
+    expect(onFieldLost).toHaveBeenCalled(); // disc hidden while we wait
+    expect(onDetach).not.toHaveBeenCalled(); // still inside the grace window
+    tracker.stop();
+  });
 });

@@ -46,6 +46,14 @@ export interface TrackerCallbacks {
   onAttach: (field: TrackedField) => void;
   /** The field lost focus or scrolled away. */
   onDetach: () => void;
+  /**
+   * The tracked field left the DOM and we are still within the grace window
+   * searching for a replacement. Hide the disc while it has no composer to sit
+   * on — otherwise it floats at its last position on a page the composer no
+   * longer exists on (an SPA route change to a composer-less page). A recovered
+   * field re-attaches and shows it again; grace expiry detaches for good.
+   */
+  onFieldLost?: () => void;
   /** Position changed; move the button. */
   onMove: (
     position: { top: number; left: number },
@@ -441,6 +449,10 @@ export function createFieldTracker(
       detach();
       return;
     }
+    // No composer right now, but still inside the grace window. Hide the disc
+    // so it never lingers on a composer-less page while we wait for a possible
+    // re-mount; a recovered field re-shows it, grace expiry destroys it.
+    callbacks.onFieldLost?.();
     replacementTimer = setTimeout(
       () => recoverReplacedField([]),
       REPLACEMENT_RETRY_MS,

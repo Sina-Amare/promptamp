@@ -159,6 +159,27 @@ describe('qualification gates', () => {
     expect(qualifies(el)).toBe(false);
   });
 
+  it('rejects search boxes even when wide (role=searchbox / <search> / role=search)', () => {
+    // The wide-single-line rule would otherwise accept a filter/search box.
+    const box = withSize(
+      mount<HTMLInputElement>('<input type="text" role="searchbox">'),
+      640,
+      24,
+    );
+    expect(qualifies(box)).toBe(false);
+
+    document.body.innerHTML = '<search><input id="s" type="text"></search>';
+    expect(
+      qualifies(withSize(document.getElementById('s')!, 640, 24)),
+    ).toBe(false);
+
+    document.body.innerHTML =
+      '<div role="search"><input id="r" type="text"></div>';
+    expect(
+      qualifies(withSize(document.getElementById('r')!, 640, 24)),
+    ).toBe(false);
+  });
+
   it('rejects a non-editable element', () => {
     expect(qualifies(mount('<div>text</div>'))).toBe(false);
     expect(qualifies(null)).toBe(false);

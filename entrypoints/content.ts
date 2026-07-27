@@ -295,6 +295,12 @@ export default defineContentScript({
           button?.destroy();
           button = null;
         },
+        // The composer left the DOM (usually an SPA route change). Hide the disc
+        // while the tracker looks for a replacement, so it never floats on a
+        // page that has no composer; a recovered field re-shows it via onMove.
+        onFieldLost: () => {
+          if (button) button.wrap.hidden = true;
+        },
         onMove: (
           point,
           corner,

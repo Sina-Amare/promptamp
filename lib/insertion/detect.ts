@@ -260,10 +260,25 @@ export function isLocked(el: Element): boolean {
 }
 
 /** Every gate from UX-SPEC §1.1, in the order that fails cheapest first. */
+/**
+ * Search and filter boxes are not prompt composers. `type="search"` is already
+ * excluded by BLOCKED_INPUT_TYPES; this also catches the semantically-marked
+ * ones that use a plain text input — a `role="searchbox"`, or any field inside a
+ * `<search>` landmark or a `role="search"` region. A real chat composer never
+ * lives there, so this only removes noise.
+ */
+export function isSearchField(el: Element): boolean {
+  return (
+    el.getAttribute('role') === 'searchbox' ||
+    closestComposed(el, 'search, [role="search"]') !== null
+  );
+}
+
 export function qualifies(el: Element | null): el is HTMLElement {
   if (!isEditable(el)) return false;
   if (isLocked(el)) return false;
   if (isOptedOut(el)) return false;
+  if (isSearchField(el)) return false;
   if (isEditableInput(el)) {
     // Google Flow and a growing number of compact AI composers use a native
     // text input for their prompt line. The insertion engine already supports
