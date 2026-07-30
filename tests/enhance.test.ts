@@ -398,6 +398,16 @@ describe('profiles', () => {
     }
   });
 
+  it('leads general + chat with keep-every-ask and invent-nothing', () => {
+    // Validated live on gemini-3.1-flash-lite: a multi-part draft stopped losing
+    // asks, and an undefined term ("SWOF") stopped getting a made-up definition.
+    for (const id of ['general', 'chat'] as const) {
+      const prompt = builtinProfile(id)!.systemPrompt;
+      expect(prompt).toContain('KEEP EVERY ASK');
+      expect(prompt).toContain('INVENT NOTHING');
+    }
+  });
+
   it('translates only for the image and video profiles', () => {
     const english = BUILTIN_PROFILES.filter(
       (p) => p.outputLanguage === 'english-default',

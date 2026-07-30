@@ -125,6 +125,33 @@ const CASES: Case[] = [
         : null,
   },
   {
+    name: 'keeps every ask in a multi-part request',
+    profile: 'general',
+    draft:
+      'i need to know if i claim this task and rework it can i turn it into a solid SWOF. go through it and check everysingle criteria, and if you couldnt check something manually, tell me to open it myself (give me the url and the guide). dont fix it yet, just let me know your verdict.',
+    check: (out) => {
+      const t = out.toLowerCase();
+      const asks = [
+        /every|each/.test(t), // check every/each criterion
+        /manual|myself|my self|url|guide/.test(t), // the fallback
+        t.includes('verdict'), // verdict only
+      ];
+      return asks.every(Boolean)
+        ? null
+        : 'dropped one of the asks (every-criterion / url-guide / verdict)';
+    },
+  },
+  {
+    name: 'does not invent the meaning of an undefined acronym',
+    profile: 'general',
+    draft:
+      'review my draft and tell me if it can become a solid SPQR brief. dont rewrite it, just give your verdict.',
+    check: (out) =>
+      /SPQR\s*\(|SPQR\s+(stands|means|is an?)|SPQR\s*:/i.test(out)
+        ? 'invented a definition for the undefined acronym SPQR'
+        : null,
+  },
+  {
     name: 'answers the draft? (must NOT)',
     profile: 'chat',
     draft: 'what is the capital of France?',
