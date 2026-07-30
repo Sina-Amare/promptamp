@@ -398,10 +398,41 @@ describe('profiles', () => {
     }
   });
 
-  it('leads general + chat with keep-every-ask and invent-nothing', () => {
-    // Validated live on gemini-3.1-flash-lite: a multi-part draft stopped losing
-    // asks, and an undefined term ("SWOF") stopped getting a made-up definition.
-    for (const id of ['general', 'chat'] as const) {
+  it('leads every built-in profile with keep-every-ask and invent-nothing', () => {
+    // Validated live on gemini-3.1-flash-lite: across ALL profiles, multi-part
+    // drafts stopped losing asks and undefined terms (SWOF/FLARB/ZORBLE) stopped
+    // getting a made-up meaning. Image and video carry tuned variants — their
+    // axis-/craft-filling is explicitly NOT inventing — so the shared invariant
+    // is the header line and the "never a guessed …" clause, not one exact phrase.
+    const ALL_IDS = [
+      'general',
+      'chat',
+      'image',
+      'video',
+      'coding',
+      'learning',
+      'writing',
+      'structured',
+    ] as const;
+    for (const id of ALL_IDS) {
+      const prompt = builtinProfile(id)!.systemPrompt;
+      expect(
+        prompt.startsWith(
+          'BEFORE ANYTHING ELSE — two rules that override every instinct below:',
+        ),
+      ).toBe(true);
+      expect(prompt).toMatch(/never a guessed/i);
+    }
+    // The six text profiles use the canonical wording; image ("INVENT NO
+    // MEANINGS") and video ("INVENT NOTHING THE USER MEANT") intentionally differ.
+    for (const id of [
+      'general',
+      'chat',
+      'coding',
+      'learning',
+      'writing',
+      'structured',
+    ] as const) {
       const prompt = builtinProfile(id)!.systemPrompt;
       expect(prompt).toContain('KEEP EVERY ASK');
       expect(prompt).toContain('INVENT NOTHING');
