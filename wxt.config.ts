@@ -24,12 +24,27 @@ export default defineConfig({
   // and this extension asks users to trust it with an API key.
   imports: false,
 
+  // The Firefox sources zip (AMO requires it for bundled builds) otherwise
+  // sweeps in gitignored, never-push docs — strategy (BLUEPRINT.md) and the
+  // prompt source-of-truth (docs/**). WXT drops .env by default but not these.
+  zip: {
+    excludeSources: [
+      'BLUEPRINT.md',
+      'docs/**',
+      // Generated / not needed to rebuild the extension — keeps the source
+      // submission lean and free of minified test bundles.
+      'playground/dist/**',
+      'playwright-report/**',
+      'store/screenshots/**',
+    ],
+  },
+
   manifest: {
     name: 'PromptAmp',
     short_name: 'PromptAmp',
     description:
       'Turn rough drafts into engineered prompts with one tap, in any text field. Bring your own API key — no backend, no telemetry.',
-    version: '0.4.1',
+    version: '0.4.2',
 
     // Every size is emitted rather than left to the browser: Chrome scales
     // 128 down to 16 badly enough that a thin arc turns to grey mush.
