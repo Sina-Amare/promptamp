@@ -63,7 +63,10 @@ a clean, engineered prompt (optionally in a different language than you wrote it
 
 ## Install
 
-Not yet in the Chrome Web Store or on AMO. Until then, load it unpacked:
+**Firefox** — [**Get it on Firefox Add-ons**](https://addons.mozilla.org/firefox/addon/promptamp-ai-prompt-enhancer/).
+One click; then open the settings and add a connection.
+
+**Chrome / Edge** — not in the Chrome Web Store yet, so load it unpacked:
 
 ```bash
 git clone https://github.com/Sina-Amare/promptamp
@@ -72,13 +75,12 @@ pnpm install
 pnpm build
 ```
 
-**Chrome / Edge** — visit `chrome://extensions`, turn on Developer mode, choose
-*Load unpacked*, and select `.output/chrome-mv3`.
+Visit `chrome://extensions` (Edge: `edge://extensions`), turn on Developer mode,
+choose *Load unpacked*, and select `.output/chrome-mv3`. Then open the settings
+and add a connection.
 
-**Firefox** — visit `about:debugging#/runtime/this-firefox`, choose *Load
-Temporary Add-on*, and select any file inside `.output/firefox-mv3`.
-
-Then open the extension's settings and add a connection.
+*(Running a source build in Firefox instead? `about:debugging#/runtime/this-firefox`
+→ Load Temporary Add-on → pick any file inside `.output/firefox-mv3`.)*
 
 ## Providers
 
